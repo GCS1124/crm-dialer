@@ -19,7 +19,7 @@ Modern CRM-style preview dialer for remote sales teams, appointment setters, and
 ## Authentication
 
 - `POST /api/auth/signup` creates a new agent account in Supabase Auth and `app_users`
-- `POST /api/auth/login` signs users in through the backend and returns a workspace JWT
+- `POST /api/auth/login` signs users in through Supabase Auth and returns a Supabase access token for the app session
 - Admins can create additional users from the user management page
 - If you seed local users, control the initial password with `AUTH_SEED_PASSWORD`
 
@@ -87,13 +87,14 @@ npm.cmd run build
 Defined in [client/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20dialer/client/.env.example).
 
 - `VITE_API_BASE_URL`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
 ## Backend env vars
 
 Defined in [server/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20dialer/server/.env.example).
 
 - `PORT`
-- `JWT_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -111,6 +112,7 @@ Defined in [server/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20diale
 - `/login`
 - `/signup`
 - `/dashboard`
+- `/calls`
 - `/dialer`
 - `/callbacks`
 - `/leads`
@@ -124,6 +126,10 @@ Defined in [server/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20diale
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `GET /api/workspace`
+- `GET /api/calls`
+- `POST /api/calls`
+- `PATCH /api/calls/:callId`
+- `DELETE /api/calls/:callId`
 - `GET /api/leads`
 - `POST /api/leads/upload`
 - `POST /api/leads/bulk-delete`
@@ -161,6 +167,11 @@ Main tables:
 - `appointments`
 - `audit_logs`
 
+Realtime:
+
+- The frontend initializes a Supabase browser client from `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+- UI refreshes automatically from Supabase realtime subscriptions on call and follow-up changes
+
 ## Twilio integration notes
 
 The dialer now supports a browser-calling path using Twilio Voice SDK when the backend has valid Twilio credentials.
@@ -173,7 +184,8 @@ If Twilio is not configured yet, the dialer falls back to manual call logging so
 
 ## Current implementation notes
 
-- Signup and sign-in are handled by the backend and verified through Supabase Auth.
-- Lead, callback, report, and user flows are loaded from backend APIs backed by Supabase tables.
+- Signup and sign-in are handled through Supabase Auth, with the Node API enforcing CRM roles from `app_users`.
+- Lead, call, callback, report, and user flows are loaded from backend APIs backed by Supabase tables.
+- The frontend also uses a Supabase client for realtime subscriptions so call and follow-up updates appear without a manual refresh.
 - CSV and Excel imports both feed the backend and can be used to build bulk calling queues quickly.
 - Twilio token generation and outbound TwiML routing are wired on the backend, with manual call logging available as a fallback.

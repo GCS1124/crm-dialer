@@ -10,8 +10,10 @@ import {
 
 import { getQueueLeads } from "../lib/analytics";
 import { apiRequest } from "../lib/api";
+import { supabase } from "../lib/supabase";
 import type {
   ActiveCall,
+  CallLogFormInput,
   Lead,
   LeadImportRecord,
   LeadPriority,
@@ -40,6 +42,13 @@ interface VoiceTokenResponse {
 interface InviteUserResult {
   user: User;
   temporaryPassword: string;
+}
+
+interface AuthResponse {
+  token: string | null;
+  refreshToken?: string | null;
+  user: User;
+  message?: string;
 }
 
 function usePersistentState<T>(key: string, fallback: T) {
@@ -76,6 +85,11 @@ const emptyAnalytics: WorkspaceAnalytics = {
   pipelineData: [],
   statusData: [],
   topAgents: [],
+  focusMetrics: [],
+  recommendedLeads: [],
+  activityFeed: [],
+  riskMetrics: [],
+  duplicateInsights: [],
 };
 
 const emptyTwilioConfig: TwilioDialerConfig = {
@@ -161,6 +175,9 @@ interface AppStateContextValue {
   assignLead: (leadId: string, userId: string) => Promise<void>;
   bulkUpdateLeadStatus: (leadIds: string[], status: LeadStatus) => Promise<void>;
   deleteLeads: (leadIds: string[]) => Promise<void>;
+  createCallLog: (input: CallLogFormInput) => Promise<void>;
+  updateCallLog: (callId: string, input: CallLogFormInput) => Promise<void>;
+  deleteCallLog: (callId: string) => Promise<void>;
   rescheduleCallback: (leadId: string, callbackAt: string, priority: LeadPriority) => Promise<void>;
   markCallbackCompleted: (leadId: string) => Promise<void>;
   reopenLead: (leadId: string) => Promise<void>;
@@ -207,6 +224,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const callRef = useRef<Call | null>(null);
   const autoDialTimerRef = useRef<number | null>(null);
   const lastAutoDialLeadIdRef = useRef<string | null>(null);
+  const notifiedCallbacksRef = useRef<Set<string>>(new Set());
 
   const queue = currentUser
     ? getQueueLeads(leads, currentUser.role, currentUser.id, queueSort, queueFilter)
@@ -359,6 +377,81 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, [currentLeadId]);
 
+  useEffect(() => {
+    if (!authToken) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void loadWorkspace(authToken);
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, [authToken]);
+
+  useEffect(() => {
+    if (!authToken) {
+      return;
+    }
+
+    supabase.realtime.setAuth(authToken);
+    const handleChange = () => {
+      void loadWorkspace(authToken);
+    };
+
+    const channel = supabase
+      .channel(`crm-live-${currentUser?.id ?? "session"}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "call_logs" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "callbacks" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "followups" }, handleChange)
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [authToken, currentUser?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      return;
+    }
+
+    const scopeLeads =
+      currentUser?.role === "agent"
+        ? leads.filter((lead) => lead.assignedAgentId === currentUser.id)
+        : leads;
+
+    scopeLeads.forEach((lead) => {
+      if (!lead.callbackTime) {
+        return;
+      }
+
+      const callbackAt = new Date(lead.callbackTime).getTime();
+      const diffMinutes = Math.round((callbackAt - Date.now()) / (1000 * 60));
+      const notificationId = `${lead.id}:${lead.callbackTime}`;
+      if (notifiedCallbacksRef.current.has(notificationId)) {
+        return;
+      }
+
+      if (diffMinutes <= 0) {
+        new Notification("Missed follow-up", {
+          body: `${lead.fullName} is overdue for follow-up.`,
+        });
+        notifiedCallbacksRef.current.add(notificationId);
+      } else if (diffMinutes <= 30) {
+        new Notification("Upcoming follow-up", {
+          body: `${lead.fullName} needs attention in the next ${diffMinutes} minutes.`,
+        });
+        notifiedCallbacksRef.current.add(notificationId);
+      }
+    });
+  }, [currentUser, leads]);
+
   async function loadWorkspace(tokenOverride?: string | null) {
     const token = tokenOverride ?? authToken;
     if (!token) {
@@ -444,10 +537,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      const payload = await apiRequest<{ token: string; user: User }>("/auth/login", {
+      const payload = await apiRequest<AuthResponse>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
+
+      if (!payload.token) {
+        return {
+          success: false,
+          message: payload.message ?? "Supabase session could not be established.",
+        };
+      }
 
       setAuthToken(payload.token);
       setCurrentUser(payload.user);
@@ -480,10 +580,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     title: string;
   }) => {
     try {
-      const payload = await apiRequest<{ token: string; user: User }>("/auth/signup", {
+      const payload = await apiRequest<AuthResponse>("/auth/signup", {
         method: "POST",
         body: JSON.stringify(input),
       });
+
+      if (!payload.token) {
+        return {
+          success: false,
+          message: payload.message ?? "Account created, but sign-in is still required.",
+        };
+      }
 
       setAuthToken(payload.token);
       setCurrentUser(payload.user);
@@ -747,6 +854,44 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await refreshWorkspace();
   };
 
+  const createCallLog = async (input: CallLogFormInput) => {
+    if (!authToken) {
+      return;
+    }
+
+    await apiRequest("/calls", {
+      method: "POST",
+      token: authToken,
+      body: JSON.stringify(input),
+    });
+    await refreshWorkspace();
+  };
+
+  const updateCallLog = async (callId: string, input: CallLogFormInput) => {
+    if (!authToken) {
+      return;
+    }
+
+    await apiRequest(`/calls/${callId}`, {
+      method: "PATCH",
+      token: authToken,
+      body: JSON.stringify(input),
+    });
+    await refreshWorkspace();
+  };
+
+  const deleteCallLog = async (callId: string) => {
+    if (!authToken) {
+      return;
+    }
+
+    await apiRequest(`/calls/${callId}`, {
+      method: "DELETE",
+      token: authToken,
+    });
+    await refreshWorkspace();
+  };
+
   const rescheduleCallback = async (
     leadId: string,
     callbackAt: string,
@@ -862,6 +1007,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         assignLead,
         bulkUpdateLeadStatus,
         deleteLeads,
+        createCallLog,
+        updateCallLog,
+        deleteCallLog,
         rescheduleCallback,
         markCallbackCompleted,
         reopenLead: reopenLeadRecord,

@@ -1,4 +1,5 @@
 import {
+  ArrowRightLeft,
   Bell,
   Building2,
   CalendarClock,
@@ -50,6 +51,30 @@ import type { LeadPriority, QueueFilter } from "../types";
 
 type WorkspaceTab = "about" | "notes" | "history" | "timeline";
 
+function formatRelativeTime(value?: string | null) {
+  if (!value) {
+    return "new";
+  }
+
+  const seconds = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) {
+    return `${seconds} sec ago`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 function buildCallbackDraft(value?: string | null) {
   if (value) {
     return toDatetimeLocalInput(value);
@@ -58,6 +83,62 @@ function buildCallbackDraft(value?: string | null) {
   const nextHour = new Date(Date.now() + 60 * 60 * 1000);
   const offset = nextHour.getTimezoneOffset() * 60 * 1000;
   return new Date(nextHour.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function buildQuickCallbackInput(hoursFromNow: number, hour?: number, minute = 0) {
+  const value = new Date();
+  value.setSeconds(0, 0);
+
+  if (typeof hour === "number") {
+    value.setDate(value.getDate() + hoursFromNow);
+    value.setHours(hour, minute, 0, 0);
+  } else {
+    value.setMinutes(value.getMinutes() + hoursFromNow * 60);
+  }
+
+  return toDatetimeLocalInput(value.toISOString());
+}
+
+function getLeadProductivityHint(lead: {
+  status: string;
+  callbackTime: string | null;
+  leadScore: number;
+  priority: string;
+  callHistory: Array<unknown>;
+  notesHistory: Array<unknown>;
+}) {
+  if (lead.callbackTime && new Date(lead.callbackTime).getTime() < Date.now()) {
+    return {
+      title: "Callback overdue",
+      detail: "This record should be reworked now before it slips any further.",
+    };
+  }
+
+  if (lead.status === "qualified" && lead.leadScore >= 75) {
+    return {
+      title: "Push for appointment",
+      detail: "Intent is strong enough to move this call toward booking.",
+    };
+  }
+
+  if (!lead.callHistory.length) {
+    return {
+      title: "First touch pending",
+      detail: "Use the preview, open with relevance, and capture context on wrap-up.",
+    };
+  }
+
+  if (!lead.notesHistory.length) {
+    return {
+      title: "Context is thin",
+      detail: "Add a sharp note after the next touch so the queue stays usable.",
+    };
+  }
+
+  return {
+    title: "Advance the opportunity",
+    detail: "Use the last outcome and move this lead to its next concrete step.",
+  };
 }
 
 function DetailSection({
@@ -74,7 +155,7 @@ function DetailSection({
   return (
     <div
       className={cn(
-        "rounded-[18px] border border-slate-200 bg-white p-5 shadow-soft dark:border-slate-800 dark:bg-slate-950",
+        "rounded-[6px] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-950",
         className,
       )}
     >
@@ -91,7 +172,7 @@ export function PreviewDialerPage() {
   const {
     currentUser,
     leads,
-    twilioConfig,
+    analytics,
     queueSort,
     queueFilter,
     setQueueSort,
@@ -128,6 +209,7 @@ export function PreviewDialerPage() {
   const [callbackMessage, setCallbackMessage] = useState("");
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("about");
   const [heroTimer, setHeroTimer] = useState(0);
+  const [queueSearch, setQueueSearch] = useState("");
 
   if (!currentUser) {
     return null;
@@ -144,6 +226,27 @@ export function PreviewDialerPage() {
     () => queue.filter((lead) => lead.id !== activeLead?.id),
     [activeLead?.id, queue],
   );
+  const filteredQueuedLeads = useMemo(() => {
+    const query = queueSearch.trim().toLowerCase();
+    if (!query) {
+      return queuedLeads;
+    }
+
+    return queuedLeads.filter((lead) =>
+      [lead.fullName, lead.company, lead.phone, lead.email].some((value) =>
+        value.toLowerCase().includes(query),
+      ),
+    );
+  }, [queueSearch, queuedLeads]);
+  const recommendedLead = analytics.recommendedLeads.find((lead) => lead.leadId === activeLead?.id);
+  const duplicateInsight = analytics.duplicateInsights.find((group) =>
+    activeLead ? group.leadIds.includes(activeLead.id) : false,
+  );
+  const productivityHint = activeLead
+    ? recommendedLead
+      ? { title: recommendedLead.reason, detail: recommendedLead.suggestedAction }
+      : getLeadProductivityHint(activeLead)
+    : null;
 
   useEffect(() => {
     if (!activeCall) {
@@ -230,8 +333,8 @@ export function PreviewDialerPage() {
     icon: LucideIcon;
   }> = [
     { id: "about", label: "About", icon: UserRound },
-    { id: "notes", label: "Notes", icon: StickyNote },
     { id: "history", label: "History", icon: History },
+    { id: "notes", label: "Notes", icon: StickyNote },
     { id: "timeline", label: "Timeline", icon: Clock3 },
   ];
 
@@ -345,7 +448,7 @@ export function PreviewDialerPage() {
               <button
                 type="button"
                 onClick={() => selectLead(activeLead.id)}
-                className="mt-3 flex w-full items-center gap-3 rounded-lg bg-[#4c88bc] px-4 py-3 text-left text-white"
+                className="mt-3 flex w-full items-center gap-3 rounded-[4px] bg-[#4c88bc] px-4 py-3 text-left text-white"
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/30 text-[12px] font-semibold">
                   {getInitials(activeLead.fullName)}
@@ -354,7 +457,9 @@ export function PreviewDialerPage() {
                   <p className="truncate text-[13px] font-semibold">{activeLead.fullName}</p>
                   <p className="mt-0.5 text-[12px] text-white/85">{formatPhone(activeLead.phone)}</p>
                 </div>
-                <PhoneOff size={16} className="shrink-0" />
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ff6d63]">
+                  <PhoneOff size={14} className="text-white" />
+                </div>
               </button>
             </div>
 
@@ -364,6 +469,18 @@ export function PreviewDialerPage() {
                 <ChevronDown size={14} />
               </div>
               <div className="mt-3 grid gap-2">
+                <label className="relative">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    value={queueSearch}
+                    onChange={(event) => setQueueSearch(event.target.value)}
+                    placeholder="Search queue"
+                    className="w-full rounded-md border border-slate-200 bg-white py-2 pl-9 pr-3 text-[12px] outline-none focus:border-surface-600 dark:border-slate-700 dark:bg-slate-950"
+                  />
+                </label>
                 <select
                   value={queueSort}
                   onChange={(event) =>
@@ -402,32 +519,46 @@ export function PreviewDialerPage() {
             </div>
 
             <div className="max-h-[360px] overflow-y-auto">
-              {queuedLeads.map((lead) => (
-                <button
-                  key={lead.id}
-                  type="button"
-                  onClick={() => selectLead(lead.id)}
-                  className="flex w-full items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
-                >
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-[11px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
-                      {getInitials(lead.fullName)}
+              {filteredQueuedLeads.length ? (
+                filteredQueuedLeads.map((lead) => (
+                  <button
+                    key={lead.id}
+                    type="button"
+                    onClick={() => selectLead(lead.id)}
+                    className="flex w-full items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-[11px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                        {getInitials(lead.fullName)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-medium text-slate-900 dark:text-white">
+                          {lead.fullName}
+                        </p>
+                        <p className="truncate text-[12px] text-slate-500 dark:text-slate-400">
+                          {formatPhone(lead.phone)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-medium text-slate-900 dark:text-white">
-                        {lead.fullName}
-                      </p>
-                      <p className="truncate text-[12px] text-slate-500 dark:text-slate-400">
-                        {formatPhone(lead.phone)}
-                      </p>
+                    <div className="text-[11px] text-slate-400">
+                      {formatRelativeTime(lead.lastContacted || lead.createdAt)}
                     </div>
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    {lead.lastContacted ? formatDateTime(lead.lastContacted) : "new"}
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-6 text-[12px] text-slate-500 dark:text-slate-400">
+                  No queued leads match this search.
+                </div>
+              )}
             </div>
+
+            <button
+              type="button"
+              className="flex w-full items-center justify-between border-t border-slate-200 px-4 py-3 text-[12px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+            >
+              <span>Recent Calls</span>
+              <ChevronRight size={14} />
+            </button>
 
             <div className="space-y-3 border-t border-slate-200 px-4 py-4 dark:border-slate-800">
               <div className="grid grid-cols-3 gap-2">
@@ -518,6 +649,22 @@ export function PreviewDialerPage() {
               {callbackPanelOpen ? (
                 <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
                   <div className="grid gap-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: "+30m", value: buildQuickCallbackInput(0.5) },
+                        { label: "+2h", value: buildQuickCallbackInput(2) },
+                        { label: "Tomorrow 9:30", value: buildQuickCallbackInput(1, 9, 30) },
+                      ].map((shortcut) => (
+                        <button
+                          key={shortcut.label}
+                          type="button"
+                          onClick={() => setCallbackAt(shortcut.value)}
+                          className="rounded-md border border-slate-200 bg-white px-2 py-2 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                        >
+                          {shortcut.label}
+                        </button>
+                      ))}
+                    </div>
                     <input
                       type="datetime-local"
                       value={scheduleCallbackDraft}
@@ -551,9 +698,9 @@ export function PreviewDialerPage() {
             <div className="rounded-none border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#ff8f7b] text-[12px] font-semibold text-white">
-                    {getInitials(activeLead.fullName)}
-                  </div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#ff8f7b] text-[12px] font-semibold text-white">
+                  {getInitials(activeLead.fullName)}
+                </div>
                   <div className="min-w-0">
                     <p className="truncate text-[14px] font-semibold text-slate-900 dark:text-white">
                       {activeLead.fullName}
@@ -575,13 +722,19 @@ export function PreviewDialerPage() {
                   </button>
                   <button
                     type="button"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    <ArrowRightLeft size={15} />
+                  </button>
+                  <button
+                    type="button"
                     onClick={activeCall?.status === "on_hold" ? resumeCall : holdCall}
                     disabled={!activeCall}
                     className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     <Pause size={15} />
                   </button>
-                  <div className="min-w-[60px] text-right text-[14px] font-medium text-slate-800 dark:text-white">
+                  <div className="min-w-[60px] text-right text-[16px] font-medium text-slate-800 dark:text-white">
                     {activeCall ? formatDuration(heroTimer) : "00:00"}
                   </div>
                   {activeCall ? (
@@ -609,9 +762,6 @@ export function PreviewDialerPage() {
                   {activeLead.status.replace("_", " ")}
                 </Badge>
                 <Badge className={getPriorityTone(activeLead.priority)}>{activeLead.priority}</Badge>
-                <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                  {twilioConfig.available ? "Browser calling" : "Manual mode"}
-                </Badge>
                 <div className="text-[12px] text-slate-500 dark:text-slate-400">
                   Queue {Math.max(queuePosition, 0)} / {queue.length || 1}
                 </div>
@@ -619,7 +769,7 @@ export function PreviewDialerPage() {
             </div>
 
             <div className="border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-950">
-              <div className="flex flex-wrap items-center gap-6">
+              <div className="flex flex-wrap items-center gap-5">
                 {workspaceTabs.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = workspaceTab === tab.id;
@@ -691,7 +841,7 @@ export function PreviewDialerPage() {
                       </div>
                     </DetailSection>
 
-                    <DetailSection title="Contact notes">
+                    <DetailSection title={`Contact notes ${noteEntries.length ? noteEntries.length : ""}`.trim()}>
                       <div className="space-y-4">
                         <div className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
                           <button
@@ -849,6 +999,26 @@ export function PreviewDialerPage() {
 
                     <DetailSection title="Queue overview">
                       <div className="space-y-4">
+                        {productivityHint ? (
+                          <div className="rounded-[10px] border border-sky-200 bg-sky-50 px-3 py-3 dark:border-sky-500/20 dark:bg-sky-950/20">
+                            <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+                              {productivityHint.title}
+                            </p>
+                            <p className="mt-1 text-[11px] leading-5 text-slate-600 dark:text-slate-300">
+                              {productivityHint.detail}
+                            </p>
+                          </div>
+                        ) : null}
+                        {duplicateInsight ? (
+                          <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 dark:border-amber-500/20 dark:bg-amber-950/20">
+                            <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+                              Duplicate watch
+                            </p>
+                            <p className="mt-1 text-[11px] leading-5 text-slate-600 dark:text-slate-300">
+                              {duplicateInsight.count} records share this {duplicateInsight.matchType}.
+                            </p>
+                          </div>
+                        ) : null}
                         <div>
                           <p className="text-[12px] text-slate-500 dark:text-slate-400">Assigned</p>
                           <p className="mt-1 text-[13px] text-slate-900 dark:text-white">
@@ -875,6 +1045,12 @@ export function PreviewDialerPage() {
                                 ? `Next in ${autoDialCountdown}s`
                                 : `${autoDialDelaySeconds}s delay`
                               : "Off"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[12px] text-slate-500 dark:text-slate-400">Lead score</p>
+                          <p className="mt-1 text-[13px] text-slate-900 dark:text-white">
+                            {activeLead.leadScore} / 100
                           </p>
                         </div>
                       </div>

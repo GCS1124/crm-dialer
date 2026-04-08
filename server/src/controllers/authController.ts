@@ -8,7 +8,6 @@ import {
   syncAuthUserLink,
 } from "../services/appRepository.js";
 import { signInWithPassword } from "../services/supabaseAuthService.js";
-import { signToken } from "../utils/jwt.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -46,7 +45,8 @@ export async function loginController(req: Request, res: Response) {
   await syncAuthUserLink(parsed.data.email, authResult.data.user.id);
 
   return res.json({
-    token: signToken({ sub: user.id, role: user.role, email: user.email }),
+    token: authResult.data.access_token,
+    refreshToken: authResult.data.refresh_token,
     user,
   });
 }
@@ -72,9 +72,19 @@ export async function signupController(req: Request, res: Response) {
   }
 
   const user = await createPublicSignup(parsed.data);
+  const authResult = await signInWithPassword(parsed.data.email, parsed.data.password);
+  if (!authResult.success) {
+    return res.status(201).json({
+      token: null,
+      refreshToken: null,
+      user,
+      message: "Account created. Sign in once to establish an authenticated session.",
+    });
+  }
 
   return res.status(201).json({
-    token: signToken({ sub: user.id, role: user.role, email: user.email }),
+    token: authResult.data.access_token,
+    refreshToken: authResult.data.refresh_token,
     user,
   });
 }

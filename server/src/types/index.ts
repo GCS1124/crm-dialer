@@ -25,6 +25,12 @@ export type ApiCallDisposition =
   | "Appointment Booked"
   | "Sale Closed";
 
+export type ApiCallType = "incoming" | "outgoing";
+
+export type ApiCallLogStatus = "connected" | "missed" | "follow_up";
+
+export type ApiCallSentiment = "positive" | "neutral" | "negative";
+
 export type ApiCallActivityType =
   | "call"
   | "note"
@@ -55,15 +61,23 @@ export interface ApiNoteEntry {
 
 export interface ApiCallLog {
   id: string;
+  leadId: string;
+  leadName: string;
+  phone: string;
   createdAt: string;
   agentId: string;
   agentName: string;
+  callType: ApiCallType;
   durationSeconds: number;
   disposition: ApiCallDisposition;
-  status: "completed" | "missed";
+  status: ApiCallLogStatus;
   notes: string;
   recordingEnabled: boolean;
   outcomeSummary: string;
+  aiSummary: string;
+  sentiment: ApiCallSentiment;
+  suggestedNextAction: string;
+  followUpAt: string | null;
 }
 
 export interface ApiLeadActivity {
@@ -138,6 +152,16 @@ export interface SaveDispositionInput {
   recordingEnabled: boolean;
 }
 
+export interface CreateCallLogInput {
+  leadId: string;
+  callType: ApiCallType;
+  durationSeconds: number;
+  status: ApiCallLogStatus;
+  notes: string;
+  callbackAt: string;
+  priority: ApiLeadPriority;
+}
+
 export interface AgentDashboardMetrics {
   totalAssignedLeads: number;
   callsMadeToday: number;
@@ -181,6 +205,58 @@ export interface TopAgentDatum {
   callbackCompletionRate: number;
 }
 
+export type InsightTone = "slate" | "blue" | "amber" | "rose" | "emerald";
+
+export interface FocusMetric {
+  id: string;
+  label: string;
+  value: number;
+  hint: string;
+  tone: InsightTone;
+}
+
+export interface RecommendedLead {
+  leadId: string;
+  fullName: string;
+  company: string;
+  phone: string;
+  priority: ApiLeadPriority;
+  status: ApiLeadStatus;
+  leadScore: number;
+  callbackTime: string | null;
+  reason: string;
+  suggestedAction: string;
+  assignedAgentName: string;
+}
+
+export interface ActivityFeedItem {
+  id: string;
+  leadId: string;
+  leadName: string;
+  type: ApiCallActivityType;
+  title: string;
+  description: string;
+  createdAt: string;
+  actorName: string;
+}
+
+export interface RiskMetric {
+  id: string;
+  label: string;
+  value: number;
+  hint: string;
+  tone: InsightTone;
+}
+
+export interface DuplicateInsight {
+  id: string;
+  matchType: "phone" | "email";
+  value: string;
+  count: number;
+  leadIds: string[];
+  leadNames: string[];
+}
+
 export interface WorkspaceAnalytics {
   agentMetrics: AgentDashboardMetrics | null;
   adminMetrics: AdminDashboardMetrics | null;
@@ -194,6 +270,11 @@ export interface WorkspaceAnalytics {
   pipelineData: ChartDatum[];
   statusData: ChartDatum[];
   topAgents: TopAgentDatum[];
+  focusMetrics: FocusMetric[];
+  recommendedLeads: RecommendedLead[];
+  activityFeed: ActivityFeedItem[];
+  riskMetrics: RiskMetric[];
+  duplicateInsights: DuplicateInsight[];
 }
 
 export interface WorkspaceSettingsStatus {

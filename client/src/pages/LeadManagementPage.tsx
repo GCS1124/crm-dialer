@@ -7,7 +7,7 @@ import { Card } from "../components/shared/Card";
 import { PageHeader } from "../components/shared/PageHeader";
 import { useAppState } from "../hooks/useAppState";
 import { parseLeadFile } from "../lib/csv";
-import { formatDateTime, getLeadStatusTone, getPriorityTone } from "../lib/utils";
+import { formatDateTime, getInsightTone, getLeadStatusTone, getPriorityTone } from "../lib/utils";
 import type { LeadStatus } from "../types";
 
 const bulkStatuses: LeadStatus[] = [
@@ -22,11 +22,15 @@ const bulkStatuses: LeadStatus[] = [
   "invalid",
 ];
 
+type LeadViewFilter = "all" | "hot" | "untouched" | "callbacks" | "duplicates" | "stale";
+
 export function LeadManagementPage() {
-  const { leads, users, uploadLeads, assignLead, bulkUpdateLeadStatus, deleteLeads } =
+  const { leads, users, analytics, uploadLeads, assignLead, bulkUpdateLeadStatus, deleteLeads } =
     useAppState();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | LeadStatus>("all");
+  const [viewFilter, setViewFilter] = useState<LeadViewFilter>("all");
+  const [tagFilter, setTagFilter] = useState("all");
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState<LeadStatus>("follow_up");
   const [uploadTargetUserId, setUploadTargetUserId] = useState("");
@@ -34,14 +38,45 @@ export function LeadManagementPage() {
   const [isBusy, setIsBusy] = useState(false);
 
   const agents = users.filter((user) => user.role === "agent");
+  const duplicateLeadIds = new Set(analytics.duplicateInsights.flatMap((group) => group.leadIds));
+  const highlightedMetrics = [
+    ...analytics.focusMetrics,
+    {
+      id: "duplicates",
+      label: "Duplicates",
+      value: analytics.duplicateInsights.length,
+      hint: "Potential merge groups found in visible records",
+      tone: "amber" as const,
+    },
+  ];
+
   const filteredLeads = leads.filter((lead) => {
     const query = search.toLowerCase();
     const matchesSearch =
       lead.fullName.toLowerCase().includes(query) ||
       lead.company.toLowerCase().includes(query) ||
-      lead.email.toLowerCase().includes(query);
+      lead.email.toLowerCase().includes(query) ||
+      lead.phone.toLowerCase().includes(query);
     const matchesStatus = statusFilter === "all" ? true : lead.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesTag = tagFilter === "all" ? true : lead.tags.includes(tagFilter);
+    const freshnessHours = Math.floor(
+      (Date.now() - new Date(lead.lastContacted || lead.updatedAt || lead.createdAt).getTime()) /
+        (1000 * 60 * 60),
+    );
+    const matchesView =
+      viewFilter === "all"
+        ? true
+        : viewFilter === "hot"
+          ? lead.priority === "Urgent" || lead.priority === "High" || lead.leadScore >= 75
+          : viewFilter === "untouched"
+            ? lead.callHistory.length === 0 && lead.notesHistory.length === 0 && !lead.lastContacted
+            : viewFilter === "callbacks"
+              ? Boolean(lead.callbackTime)
+              : viewFilter === "duplicates"
+                ? duplicateLeadIds.has(lead.id)
+                : freshnessHours >= 48;
+
+    return matchesSearch && matchesStatus && matchesTag && matchesView;
   });
 
   const toggleLead = (leadId: string) => {
@@ -123,8 +158,75 @@ export function LeadManagementPage() {
         </Card>
       ) : null}
 
+      <div className="grid gap-3 xl:grid-cols-5">
+        {highlightedMetrics.map((metric) => (
+          <button
+            key={metric.id}
+            type="button"
+            onClick={() =>
+              setViewFilter(
+                metric.id === "hot_leads"
+                  ? "hot"
+                  : metric.id === "untouched"
+                    ? "untouched"
+                    : metric.id === "duplicates"
+                      ? "duplicates"
+                      : metric.id === "overdue_callbacks" || metric.id === "due_today"
+                        ? "callbacks"
+                        : metric.id === "risk_stale"
+                          ? "stale"
+                          : "all",
+              )
+            }
+            className="text-left"
+          >
+            <Card className="h-full p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    {metric.label}
+                  </p>
+                  <p className="mt-2 text-[24px] font-semibold text-slate-900 dark:text-white">
+                    {metric.value}
+                  </p>
+                  <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                    {metric.hint}
+                  </p>
+                </div>
+                <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-medium ${getInsightTone(metric.tone)}`}>
+                  View
+                </span>
+              </div>
+            </Card>
+          </button>
+        ))}
+      </div>
+
       <Card className="space-y-4">
-        <div className="grid gap-4 xl:grid-cols-[1.1fr_0.7fr_0.8fr_auto_auto]">
+        <div className="flex flex-wrap gap-2">
+          {[
+            ["all", "All"],
+            ["hot", "Hot"],
+            ["untouched", "Untouched"],
+            ["callbacks", "Callbacks"],
+            ["duplicates", "Duplicates"],
+            ["stale", "Stale"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setViewFilter(value as LeadViewFilter)}
+              className={
+                value === viewFilter
+                  ? "rounded-md bg-slate-900 px-3 py-1.5 text-[12px] font-medium text-white dark:bg-white dark:text-slate-900"
+                  : "rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-4 xl:grid-cols-[1.1fr_0.7fr_0.7fr_0.8fr_auto_auto]">
           <label className="relative">
             <Search
               size={16}
@@ -146,6 +248,18 @@ export function LeadManagementPage() {
             {bulkStatuses.map((status) => (
               <option key={status} value={status}>
                 {status.replace("_", " ")}
+              </option>
+            ))}
+          </select>
+          <select
+            value={tagFilter}
+            onChange={(event) => setTagFilter(event.target.value)}
+            className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+          >
+            <option value="all">All tags</option>
+            {Array.from(new Set(leads.flatMap((lead) => lead.tags))).map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
               </option>
             ))}
           </select>
@@ -228,12 +342,43 @@ export function LeadManagementPage() {
                     <p className="font-semibold text-slate-900 dark:text-white">
                       {lead.fullName}
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {duplicateLeadIds.has(lead.id) ? (
+                        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                          duplicate
+                        </Badge>
+                      ) : null}
+                      {lead.callbackTime ? (
+                        <Badge className="bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">
+                          callback set
+                        </Badge>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-slate-500 dark:text-slate-400">
                       {lead.company} - {lead.email}
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {lead.tags.slice(0, 3).map((tag) => (
+                        <Badge
+                          key={tag}
+                          className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        >
+                          #{tag}
+                        </Badge>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                      Next step:{" "}
+                      {lead.callbackTime
+                        ? `Callback on ${formatDateTime(lead.callbackTime)}`
+                        : lead.callHistory[0]?.outcomeSummary || "No next action captured"}
+                    </p>
                   </td>
                   <td className="px-4 py-4 align-top text-slate-600 dark:text-slate-300">
-                    {lead.interest}
+                    <p>{lead.interest}</p>
+                    <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      Score {lead.leadScore}
+                    </p>
                   </td>
                   <td className="px-4 py-4 align-top">
                     <Badge className={getLeadStatusTone(lead.status)}>

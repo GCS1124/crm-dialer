@@ -27,6 +27,12 @@ export type CallDisposition =
   | "Appointment Booked"
   | "Sale Closed";
 
+export type CallType = "incoming" | "outgoing";
+
+export type CallLogStatus = "connected" | "missed" | "follow_up";
+
+export type CallSentiment = "positive" | "neutral" | "negative";
+
 export type CallActivityType =
   | "call"
   | "note"
@@ -68,15 +74,23 @@ export interface NoteEntry {
 
 export interface CallLog {
   id: string;
+  leadId: string;
+  leadName: string;
+  phone: string;
   createdAt: string;
   agentId: string;
   agentName: string;
+  callType: CallType;
   durationSeconds: number;
   disposition: CallDisposition;
-  status: "completed" | "missed";
+  status: CallLogStatus;
   notes: string;
   recordingEnabled: boolean;
   outcomeSummary: string;
+  aiSummary: string;
+  sentiment: CallSentiment;
+  suggestedNextAction: string;
+  followUpAt: string | null;
 }
 
 export interface LeadActivity {
@@ -130,6 +144,16 @@ export interface SaveDispositionInput {
   callbackAt: string;
   followUpPriority: LeadPriority;
   outcomeSummary: string;
+}
+
+export interface CallLogFormInput {
+  leadId: string;
+  callType: CallType;
+  durationSeconds: number;
+  status: CallLogStatus;
+  notes: string;
+  callbackAt: string;
+  priority: LeadPriority;
 }
 
 export interface LeadImportRecord {
@@ -199,6 +223,58 @@ export interface TopAgentDatum {
   callbackCompletionRate: number;
 }
 
+export type InsightTone = "slate" | "blue" | "amber" | "rose" | "emerald";
+
+export interface FocusMetric {
+  id: string;
+  label: string;
+  value: number;
+  hint: string;
+  tone: InsightTone;
+}
+
+export interface RecommendedLead {
+  leadId: string;
+  fullName: string;
+  company: string;
+  phone: string;
+  priority: LeadPriority;
+  status: LeadStatus;
+  leadScore: number;
+  callbackTime: string | null;
+  reason: string;
+  suggestedAction: string;
+  assignedAgentName: string;
+}
+
+export interface ActivityFeedItem {
+  id: string;
+  leadId: string;
+  leadName: string;
+  type: CallActivityType;
+  title: string;
+  description: string;
+  createdAt: string;
+  actorName: string;
+}
+
+export interface RiskMetric {
+  id: string;
+  label: string;
+  value: number;
+  hint: string;
+  tone: InsightTone;
+}
+
+export interface DuplicateInsight {
+  id: string;
+  matchType: "phone" | "email";
+  value: string;
+  count: number;
+  leadIds: string[];
+  leadNames: string[];
+}
+
 export interface WorkspaceAnalytics {
   agentMetrics: AgentDashboardMetrics | null;
   adminMetrics: AdminDashboardMetrics | null;
@@ -212,6 +288,11 @@ export interface WorkspaceAnalytics {
   pipelineData: ChartDatum[];
   statusData: ChartDatum[];
   topAgents: TopAgentDatum[];
+  focusMetrics: FocusMetric[];
+  recommendedLeads: RecommendedLead[];
+  activityFeed: ActivityFeedItem[];
+  riskMetrics: RiskMetric[];
+  duplicateInsights: DuplicateInsight[];
 }
 
 export interface TwilioDialerConfig {

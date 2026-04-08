@@ -15,7 +15,14 @@ import { Card } from "../components/shared/Card";
 import { PageHeader } from "../components/shared/PageHeader";
 import { StatCard } from "../components/shared/StatCard";
 import { useAppState } from "../hooks/useAppState";
-import { formatDuration, formatPhone, getLeadStatusTone } from "../lib/utils";
+import {
+  formatDateTime,
+  formatDuration,
+  formatPhone,
+  getInsightTone,
+  getLeadStatusTone,
+  getPriorityTone,
+} from "../lib/utils";
 
 export function DashboardPage() {
   const { currentUser, leads, analytics } = useAppState();
@@ -30,20 +37,28 @@ export function DashboardPage() {
   const activeAssignedLeads = leads
     .filter((lead) => lead.assignedAgentId === currentUser.id)
     .slice(0, 4);
+  const allCalls = leads.flatMap((lead) => lead.callHistory);
+  const weeklyCalls = allCalls.filter(
+    (call) => Date.now() - new Date(call.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000,
+  ).length;
+  const monthlyCalls = allCalls.filter(
+    (call) => Date.now() - new Date(call.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000,
+  ).length;
+  const successfulCalls = allCalls.filter((call) => call.status === "connected").length;
+  const completedFollowUps = leads.flatMap((lead) => lead.activities).filter(
+    (activity) =>
+      activity.type === "callback" && activity.description.toLowerCase().includes("completed"),
+  ).length;
 
   return (
     <div className="space-y-5">
       <PageHeader
         eyebrow={isAgent ? "Agent Dashboard" : "Revenue Dashboard"}
-        title={
-          isAgent
-            ? `Welcome back, ${currentUser.name.split(" ")[0]}`
-            : "Team productivity at a glance"
-        }
+        title={isAgent ? `Welcome back, ${currentUser.name.split(" ")[0]}` : "Team productivity at a glance"}
         description={
           isAgent
-            ? "Your calls, callbacks, and next leads."
-            : "Live team performance."
+            ? "Calls, callbacks, risks, and the next leads to move right now."
+            : "Live team performance, duplicate watch, and the next action queue."
         }
       />
 
@@ -107,7 +122,51 @@ export function DashboardPage() {
         ) : null}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.4fr_0.9fr]">
+      <div className="grid gap-3 xl:grid-cols-4">
+        <Card className="p-4">
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Weekly calls</p>
+          <p className="mt-2 text-[24px] font-semibold text-slate-900 dark:text-white">{weeklyCalls}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Monthly calls</p>
+          <p className="mt-2 text-[24px] font-semibold text-slate-900 dark:text-white">{monthlyCalls}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Conversion rate</p>
+          <p className="mt-2 text-[24px] font-semibold text-slate-900 dark:text-white">
+            {allCalls.length ? Math.round((successfulCalls / allCalls.length) * 100) : 0}%
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Completed follow-ups</p>
+          <p className="mt-2 text-[24px] font-semibold text-slate-900 dark:text-white">{completedFollowUps}</p>
+        </Card>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-4">
+        {analytics.focusMetrics.map((metric) => (
+          <Card key={metric.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  {metric.label}
+                </p>
+                <p className="mt-2 text-[24px] font-semibold text-slate-900 dark:text-white">
+                  {metric.value}
+                </p>
+                <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                  {metric.hint}
+                </p>
+              </div>
+              <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-medium ${getInsightTone(metric.tone)}`}>
+                Focus
+              </span>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.3fr_1fr]">
         <Card>
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -128,32 +187,61 @@ export function DashboardPage() {
         </Card>
 
         <Card>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            Callback Queue
-          </p>
-          <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
-            Follow-ups
-          </h3>
-          <div className="mt-6 space-y-4">
-            {[
-              { label: "Today", value: analytics.callbackCounts.today },
-              { label: "Overdue", value: analytics.callbackCounts.overdue },
-              { label: "Upcoming", value: analytics.callbackCounts.upcoming },
-            ].map((bucket) => (
-              <div
-                key={bucket.label}
-                className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-5 dark:border-slate-800 dark:bg-slate-900"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-[12px] font-medium text-slate-600 dark:text-slate-300">
-                    {bucket.label}
-                  </p>
-                  <p className="text-[28px] font-semibold text-slate-900 dark:text-white">
-                    {bucket.value}
-                  </p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                Action Queue
+              </p>
+              <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+                Work next
+              </h3>
+            </div>
+            <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              {analytics.recommendedLeads.length} prioritized
+            </Badge>
+          </div>
+          <div className="mt-5 space-y-3">
+            {analytics.recommendedLeads.length ? (
+              analytics.recommendedLeads.map((lead) => (
+                <div
+                  key={lead.leadId}
+                  className="rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate font-semibold text-slate-900 dark:text-white">
+                          {lead.fullName}
+                        </p>
+                        <Badge className={getPriorityTone(lead.priority)}>{lead.priority}</Badge>
+                        <Badge className={getLeadStatusTone(lead.status)}>
+                          {lead.status.replace("_", " ")}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 truncate text-[12px] text-slate-500 dark:text-slate-400">
+                        {lead.company || "No company"} • {formatPhone(lead.phone)}
+                      </p>
+                      <p className="mt-2 text-[12px] font-medium text-slate-700 dark:text-slate-200">
+                        {lead.reason}
+                      </p>
+                      <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                        {lead.suggestedAction}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Score</p>
+                      <p className="text-[18px] font-semibold text-slate-900 dark:text-white">
+                        {lead.leadScore}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                No urgent work items in queue right now.
+              </p>
+            )}
           </div>
         </Card>
       </div>
@@ -199,11 +287,14 @@ export function DashboardPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-slate-900 dark:text-white">
-                          {lead.fullName}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-slate-900 dark:text-white">
+                            {lead.fullName}
+                          </p>
+                          <Badge className={getPriorityTone(lead.priority)}>{lead.priority}</Badge>
+                        </div>
                         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                          {lead.company} - {formatPhone(lead.phone)}
+                          {lead.company} • {formatPhone(lead.phone)}
                         </p>
                       </div>
                       <Badge className={getLeadStatusTone(lead.status)}>
@@ -227,7 +318,7 @@ export function DashboardPage() {
                             {agent.name}
                           </p>
                           <p className="text-sm text-slate-500 dark:text-slate-400">
-                            {agent.calls} calls - {agent.conversions} conversions
+                            {agent.calls} calls • {agent.conversions} conversions
                           </p>
                         </div>
                       </div>
@@ -237,6 +328,126 @@ export function DashboardPage() {
                 ))}
           </div>
         </Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+        <Card>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                Recent CRM Activity
+              </p>
+              <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+                Latest movement
+              </h3>
+            </div>
+            <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              Live feed
+            </Badge>
+          </div>
+          <div className="mt-5 space-y-3">
+            {analytics.activityFeed.length ? (
+              analytics.activityFeed.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900 dark:text-white">
+                        {activity.title}
+                      </p>
+                      <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
+                        {activity.leadName} • {activity.actorName}
+                      </p>
+                      <p className="mt-2 text-[12px] leading-5 text-slate-600 dark:text-slate-300">
+                        {activity.description || "Activity logged on this lead."}
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {formatDateTime(activity.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                Activity will appear here as calls, notes, and callbacks are logged.
+              </p>
+            )}
+          </div>
+        </Card>
+
+        <div className="space-y-5">
+          <Card>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Pipeline Risks
+            </p>
+            <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+              What needs attention
+            </h3>
+            <div className="mt-5 space-y-3">
+              {analytics.riskMetrics.map((risk) => (
+                <div
+                  key={risk.id}
+                  className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200">
+                        {risk.label}
+                      </p>
+                      <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                        {risk.hint}
+                      </p>
+                    </div>
+                    <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-medium ${getInsightTone(risk.tone)}`}>
+                      {risk.value}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Duplicate Watch
+            </p>
+            <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+              Possible duplicate records
+            </h3>
+            <div className="mt-5 space-y-3">
+              {analytics.duplicateInsights.length ? (
+                analytics.duplicateInsights.slice(0, 4).map((group) => (
+                  <div
+                    key={group.id}
+                    className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[12px] font-medium text-slate-900 dark:text-white">
+                        {group.matchType === "phone" ? "Phone match" : "Email match"}
+                      </p>
+                      <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                        {group.count} records
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300">
+                      {group.value}
+                    </p>
+                    <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                      {group.leadNames.join(", ")}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                  No duplicate patterns detected in the visible workspace.
+                </p>
+              )}
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
   );

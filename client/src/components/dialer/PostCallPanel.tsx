@@ -18,6 +18,12 @@ const dispositions: CallDisposition[] = [
 ];
 
 const priorities: LeadPriority[] = ["Low", "Medium", "High", "Urgent"];
+const noteTemplates = [
+  "Interested and asked for the next step.",
+  "Reached voicemail. Retry during business hours.",
+  "Asked for a callback later this week.",
+  "Not the decision maker. Need the right contact.",
+];
 
 export function PostCallPanel({
   open,
@@ -109,6 +115,18 @@ export function PostCallPanel({
 
         <label className="space-y-1.5 text-[11px] md:col-span-2">
           <span className="font-medium text-slate-700 dark:text-slate-200">Call notes</span>
+          <div className="flex flex-wrap gap-2">
+            {noteTemplates.map((template) => (
+              <button
+                key={template}
+                type="button"
+                onClick={() => setNotes((current) => (current ? `${current}\n${template}` : template))}
+                className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+              >
+                {template}
+              </button>
+            ))}
+          </div>
           <textarea
             value={notes}
             onChange={(event) => setNotes(event.target.value)}

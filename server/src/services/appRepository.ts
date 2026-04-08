@@ -3,16 +3,20 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { env } from "../config/env.js";
 import { supabaseAdmin } from "./supabaseAdmin.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
+import { buildAiAssist } from "./aiAssistService.js";
 import { getTwilioFieldStatus, getTwilioVoiceConfig } from "./twilioService.js";
 import type {
   ApiCallActivityType,
   ApiCallDisposition,
+  ApiCallLogStatus,
+  ApiCallType,
   ApiLead,
   ApiLeadImportRecord,
   ApiLeadPriority,
   ApiLeadStatus,
   ApiUser,
   ApiUserRole,
+  CreateCallLogInput,
   CreateUserInput,
   SaveDispositionInput,
   SignupInput,
@@ -73,6 +77,7 @@ interface DbCallLogRow {
   id: string;
   lead_id: string;
   agent_id: string | null;
+  direction: string;
   disposition: ApiCallDisposition;
   duration_seconds: number;
   call_status: string;
@@ -165,10 +170,28 @@ function dispositionToStatus(disposition: ApiCallDisposition): ApiLeadStatus {
   return map[disposition];
 }
 
-function callStatusFromDisposition(disposition: ApiCallDisposition): "completed" | "missed" {
+function callStatusFromDisposition(disposition: ApiCallDisposition): ApiCallLogStatus {
   return ["No Answer", "Busy", "Voicemail", "Wrong Number"].includes(disposition)
     ? "missed"
-    : "completed";
+    : disposition === "Call Back Later" || disposition === "Follow-Up Required"
+      ? "follow_up"
+      : "connected";
+}
+
+function mapStoredCallStatus(value: string, disposition: ApiCallDisposition): ApiCallLogStatus {
+  if (value === "connected" || value === "missed" || value === "follow_up") {
+    return value;
+  }
+
+  if (value === "completed") {
+    return callStatusFromDisposition(disposition) === "missed" ? "missed" : "connected";
+  }
+
+  return callStatusFromDisposition(disposition);
+}
+
+function mapStoredCallType(value: string): ApiCallType {
+  return value === "incoming" ? "incoming" : "outgoing";
 }
 
 function activityTypeFromDisposition(disposition: ApiCallDisposition): ApiCallActivityType {
@@ -183,6 +206,28 @@ function activityTypeFromDisposition(disposition: ApiCallDisposition): ApiCallAc
   }
 
   return "call";
+}
+
+function dispositionFromCallStatus(status: ApiCallLogStatus): ApiCallDisposition {
+  if (status === "missed") {
+    return "No Answer";
+  }
+  if (status === "follow_up") {
+    return "Follow-Up Required";
+  }
+
+  return "Interested";
+}
+
+function leadStatusFromCallStatus(status: ApiCallLogStatus): ApiLeadStatus {
+  if (status === "missed") {
+    return "contacted";
+  }
+  if (status === "follow_up") {
+    return "follow_up";
+  }
+
+  return "qualified";
 }
 
 function buildTemporaryPassword() {
@@ -293,7 +338,7 @@ async function fetchLeadRelations(leadIds: string[]) {
       supabaseAdmin
         .from("call_logs")
         .select(
-          "id, lead_id, agent_id, disposition, duration_seconds, call_status, recording_enabled, outcome_summary, notes, created_at",
+          "id, lead_id, agent_id, direction, disposition, duration_seconds, call_status, recording_enabled, outcome_summary, notes, created_at",
         )
         .in("lead_id", leadIds)
         .order("created_at", { ascending: false }),
@@ -378,6 +423,22 @@ async function getLeadRowById(leadId: string) {
   return (data as DbLeadRow | null) ?? null;
 }
 
+async function getCallLogRowById(callId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("call_logs")
+    .select(
+      "id, lead_id, agent_id, direction, disposition, duration_seconds, call_status, recording_enabled, outcome_summary, notes, created_at",
+    )
+    .eq("id", callId)
+    .maybeSingle();
+
+  if (error) {
+    handleError(error, "Unable to load call log");
+  }
+
+  return (data as DbCallLogRow | null) ?? null;
+}
+
 async function ensureLeadAccess(leadId: string, currentUser: ApiUser) {
   const lead = await getLeadRowById(leadId);
   if (!lead) {
@@ -389,6 +450,20 @@ async function ensureLeadAccess(leadId: string, currentUser: ApiUser) {
   }
 
   return lead;
+}
+
+async function ensureCallLogAccess(callId: string, currentUser: ApiUser) {
+  const callLog = await getCallLogRowById(callId);
+  if (!callLog) {
+    throw new Error("Call log not found");
+  }
+
+  const lead = await ensureLeadAccess(callLog.lead_id, currentUser);
+  if (currentUser.role === "agent" && callLog.agent_id && callLog.agent_id !== currentUser.id) {
+    throw new Error("You do not have access to this call log");
+  }
+
+  return { callLog, lead };
 }
 
 async function insertAuditLog(
@@ -463,20 +538,39 @@ async function buildLeadPayload(currentUser?: ApiUser) {
       createdAt: lead.created_at,
       updatedAt: lead.updated_at,
       tags: (tagsByLead.get(lead.id) ?? []).map((tag) => tag.label),
-      callHistory: (callsByLead.get(lead.id) ?? []).map((call) => ({
-        id: call.id,
-        createdAt: call.created_at,
-        agentId: call.agent_id ?? "",
-        agentName: call.agent_id
-          ? usersById.get(call.agent_id)?.name ?? "Unknown Agent"
-          : "Unknown Agent",
-        durationSeconds: call.duration_seconds,
-        disposition: call.disposition,
-        status: call.call_status === "completed" ? "completed" : "missed",
-        notes: call.notes ?? "",
-        recordingEnabled: call.recording_enabled,
-        outcomeSummary: call.outcome_summary ?? "",
-      })),
+      callHistory: (callsByLead.get(lead.id) ?? []).map((call) => {
+        const status = mapStoredCallStatus(call.call_status, call.disposition);
+        const aiAssist = buildAiAssist({
+          notes: call.notes ?? "",
+          outcomeSummary: call.outcome_summary ?? "",
+          status,
+          disposition: call.disposition,
+          callbackAt: activeCallback?.scheduled_for ?? lead.callback_time,
+        });
+
+        return {
+          id: call.id,
+          leadId: lead.id,
+          leadName: lead.full_name,
+          phone: lead.phone,
+          createdAt: call.created_at,
+          agentId: call.agent_id ?? "",
+          agentName: call.agent_id
+            ? usersById.get(call.agent_id)?.name ?? "Unknown Agent"
+            : "Unknown Agent",
+          callType: mapStoredCallType(call.direction),
+          durationSeconds: call.duration_seconds,
+          disposition: call.disposition,
+          status,
+          notes: call.notes ?? "",
+          recordingEnabled: call.recording_enabled,
+          outcomeSummary: call.outcome_summary ?? "",
+          aiSummary: aiAssist.aiSummary,
+          sentiment: aiAssist.sentiment,
+          suggestedNextAction: aiAssist.suggestedNextAction,
+          followUpAt: activeCallback?.scheduled_for ?? lead.callback_time,
+        };
+      }),
       notesHistory: (notesByLead.get(lead.id) ?? []).map((note) => ({
         id: note.id,
         body: note.note_body,
@@ -561,6 +655,20 @@ export async function getUserByEmail(email: string) {
   return user ? mapUser(user) : null;
 }
 
+export async function getUserByAuthUserId(authUserId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("app_users")
+    .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status")
+    .eq("auth_user_id", authUserId)
+    .maybeSingle();
+
+  if (error) {
+    handleError(error, "Unable to load workspace user");
+  }
+
+  return data ? mapUser(data as DbUserRow) : null;
+}
+
 export async function getUserById(userId: string) {
   const user = await getAppUserRowById(userId);
   return user ? mapUser(user) : null;
@@ -607,6 +715,215 @@ export async function listUsers() {
 export async function listLeads(currentUser: ApiUser) {
   const { leads } = await buildLeadPayload(currentUser);
   return leads;
+}
+
+export async function listCallLogs(currentUser: ApiUser) {
+  const { leads } = await buildLeadPayload(currentUser);
+  return leads
+    .flatMap((lead) => lead.callHistory)
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
+export async function createManualCallLog(input: CreateCallLogInput, currentUser: ApiUser) {
+  const lead = await ensureLeadAccess(input.leadId, currentUser);
+  const now = new Date().toISOString();
+  const disposition = dispositionFromCallStatus(input.status);
+  const aiAssist = buildAiAssist({
+    notes: input.notes,
+    status: input.status,
+    disposition,
+    callbackAt: input.callbackAt || null,
+  });
+
+  const [callInsert, leadUpdate] = await Promise.all([
+    supabaseAdmin.from("call_logs").insert({
+      lead_id: input.leadId,
+      agent_id: currentUser.id,
+      direction: input.callType,
+      disposition,
+      duration_seconds: input.durationSeconds,
+      call_status: input.status,
+      recording_enabled: false,
+      outcome_summary: aiAssist.aiSummary,
+      notes: input.notes.trim() || null,
+    }),
+    supabaseAdmin
+      .from("leads")
+      .update({
+        last_contacted: now,
+        callback_time: input.callbackAt || null,
+        priority: input.priority,
+        status: leadStatusFromCallStatus(input.status),
+        notes: input.notes.trim() || lead.notes,
+        updated_at: now,
+      })
+      .eq("id", input.leadId),
+  ]);
+
+  if (callInsert.error) {
+    handleError(callInsert.error, "Unable to create call log");
+  }
+  if (leadUpdate.error) {
+    handleError(leadUpdate.error, "Unable to update lead after logging call");
+  }
+
+  const operations: Array<PromiseLike<{ error: PostgrestError | null }>> = [
+    supabaseAdmin.from("activity_logs").insert({
+      lead_id: input.leadId,
+      actor_id: currentUser.id,
+      activity_type: input.status === "follow_up" ? "callback" : "call",
+      title: `${input.callType === "incoming" ? "Incoming" : "Outgoing"} call logged`,
+      description: aiAssist.aiSummary,
+    }),
+  ];
+
+  if (input.notes.trim()) {
+    operations.push(
+      supabaseAdmin.from("lead_notes").insert({
+        lead_id: input.leadId,
+        author_id: currentUser.id,
+        note_body: input.notes.trim(),
+      }),
+    );
+  }
+
+  operations.push(
+    supabaseAdmin
+      .from("callbacks")
+      .update({
+        status: "cancelled",
+        updated_at: now,
+      })
+      .eq("lead_id", input.leadId)
+      .eq("status", "scheduled"),
+  );
+
+  if (input.callbackAt) {
+    operations.push(
+      supabaseAdmin.from("callbacks").insert({
+        lead_id: input.leadId,
+        owner_id: currentUser.id,
+        scheduled_for: input.callbackAt,
+        priority: input.priority,
+        status: "scheduled",
+      }),
+    );
+  }
+
+  const results = await Promise.all(operations);
+  const failure = results.find((result) => result.error);
+  if (failure?.error) {
+    handleError(failure.error, "Unable to finalize call log workflow");
+  }
+
+  await insertAuditLog(currentUser.id, "call_log", input.leadId, "create", {
+    leadId: input.leadId,
+    callType: input.callType,
+    status: input.status,
+  });
+}
+
+export async function updateManualCallLog(
+  callId: string,
+  input: CreateCallLogInput,
+  currentUser: ApiUser,
+) {
+  await ensureLeadAccess(input.leadId, currentUser);
+  const { lead } = await ensureCallLogAccess(callId, currentUser);
+  const now = new Date().toISOString();
+  const disposition = dispositionFromCallStatus(input.status);
+  const aiAssist = buildAiAssist({
+    notes: input.notes,
+    status: input.status,
+    disposition,
+    callbackAt: input.callbackAt || null,
+  });
+
+  const [callUpdate, leadUpdate] = await Promise.all([
+    supabaseAdmin
+      .from("call_logs")
+      .update({
+        lead_id: input.leadId,
+        direction: input.callType,
+        disposition,
+        duration_seconds: input.durationSeconds,
+        call_status: input.status,
+        outcome_summary: aiAssist.aiSummary,
+        notes: input.notes.trim() || null,
+      })
+      .eq("id", callId),
+    supabaseAdmin
+      .from("leads")
+      .update({
+        callback_time: input.callbackAt || null,
+        priority: input.priority,
+        status: leadStatusFromCallStatus(input.status),
+        notes: input.notes.trim() || lead.notes,
+        updated_at: now,
+      })
+      .eq("id", input.leadId),
+  ]);
+
+  if (callUpdate.error) {
+    handleError(callUpdate.error, "Unable to update call log");
+  }
+  if (leadUpdate.error) {
+    handleError(leadUpdate.error, "Unable to update lead after editing call");
+  }
+
+  const operations: Array<PromiseLike<{ error: PostgrestError | null }>> = [
+    supabaseAdmin.from("activity_logs").insert({
+      lead_id: input.leadId,
+      actor_id: currentUser.id,
+      activity_type: input.status === "follow_up" ? "callback" : "call",
+      title: "Call log updated",
+      description: aiAssist.aiSummary,
+    }),
+    supabaseAdmin
+      .from("callbacks")
+      .update({
+        status: "cancelled",
+        updated_at: now,
+      })
+      .eq("lead_id", input.leadId)
+      .eq("status", "scheduled"),
+  ];
+
+  if (input.callbackAt) {
+    operations.push(
+      supabaseAdmin.from("callbacks").insert({
+        lead_id: input.leadId,
+        owner_id: currentUser.id,
+        scheduled_for: input.callbackAt,
+        priority: input.priority,
+        status: "scheduled",
+      }),
+    );
+  }
+
+  const results = await Promise.all(operations);
+  const failure = results.find((result) => result.error);
+  if (failure?.error) {
+    handleError(failure.error, "Unable to update follow-up state");
+  }
+
+  await insertAuditLog(currentUser.id, "call_log", callId, "update", {
+    leadId: input.leadId,
+    status: input.status,
+  });
+}
+
+export async function deleteManualCallLog(callId: string, currentUser: ApiUser) {
+  const { callLog } = await ensureCallLogAccess(callId, currentUser);
+
+  const { error } = await supabaseAdmin.from("call_logs").delete().eq("id", callId);
+  if (error) {
+    handleError(error, "Unable to delete call log");
+  }
+
+  await insertAuditLog(currentUser.id, "call_log", callId, "delete", {
+    leadId: callLog.lead_id,
+  });
 }
 
 export async function importLeads(

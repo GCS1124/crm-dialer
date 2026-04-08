@@ -13,6 +13,9 @@ const SignupPage = lazy(() =>
 const DashboardPage = lazy(() =>
   import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })),
 );
+const CallsPage = lazy(() =>
+  import("./pages/CallsPage").then((module) => ({ default: module.CallsPage })),
+);
 const PreviewDialerPage = lazy(() =>
   import("./pages/PreviewDialerPage").then((module) => ({
     default: module.PreviewDialerPage,
@@ -139,6 +142,14 @@ export default function App() {
           element={
             <LazyPage>
               <DashboardPage />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="/calls"
+          element={
+            <LazyPage>
+              <CallsPage />
             </LazyPage>
           }
         />

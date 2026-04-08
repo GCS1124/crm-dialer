@@ -8,9 +8,10 @@ import { getNavigationItemsForRole } from "./navigation";
 
 const titles: Record<string, string> = {
   "/dashboard": "Dashboard",
+  "/calls": "Calls",
   "/dialer": "Dialer",
-  "/callbacks": "Callbacks",
-  "/leads": "Leads",
+  "/callbacks": "Follow-Ups",
+  "/leads": "Contacts",
   "/reports": "Reports",
   "/users": "Users",
   "/settings": "Settings",
