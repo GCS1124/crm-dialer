@@ -26,25 +26,25 @@ export function UserManagementPage() {
       <PageHeader
         eyebrow="User Management"
         title="Provision roles and monitor workload"
-        description="Create authenticated users from the backend, control role access, and monitor who is active on the floor."
+        description="Create users, assign roles, and monitor workload."
       />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Admins</p>
-          <p className="mt-3 font-display text-4xl font-bold text-slate-900 dark:text-white">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Admins</p>
+          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
             {users.filter((user) => user.role === "admin").length}
           </p>
         </Card>
         <Card>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Team leaders</p>
-          <p className="mt-3 font-display text-4xl font-bold text-slate-900 dark:text-white">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Team leaders</p>
+          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
             {users.filter((user) => user.role === "team_leader").length}
           </p>
         </Card>
         <Card>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Agents</p>
-          <p className="mt-3 font-display text-4xl font-bold text-slate-900 dark:text-white">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Agents</p>
+          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
             {users.filter((user) => user.role === "agent").length}
           </p>
         </Card>
@@ -62,7 +62,7 @@ export function UserManagementPage() {
             <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
               Create User
             </p>
-            <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+            <h3 className="mt-2 text-[18px] font-semibold text-slate-900 dark:text-white">
               Add new access
             </h3>
           </div>
@@ -71,19 +71,19 @@ export function UserManagementPage() {
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Full name"
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+              className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
             />
             <input
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="Email"
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+              className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
             />
             <div className="grid gap-4 md:grid-cols-2">
               <select
                 value={role}
                 onChange={(event) => setRole(event.target.value as UserRole)}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
               >
                 {roleOptions.map((item) => (
                   <option key={item} value={item}>
@@ -95,7 +95,7 @@ export function UserManagementPage() {
                 value={team}
                 onChange={(event) => setTeam(event.target.value)}
                 placeholder="Team"
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -103,13 +103,13 @@ export function UserManagementPage() {
                 value={timezone}
                 onChange={(event) => setTimezone(event.target.value)}
                 placeholder="Timezone"
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
               />
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Job title"
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
               />
             </div>
             <Button
@@ -157,12 +157,12 @@ export function UserManagementPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Workload Snapshot
           </p>
-          <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+          <h3 className="mt-2 text-[18px] font-semibold text-slate-900 dark:text-white">
             User roster and role control
           </h3>
           <div className="mt-5 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
-              <thead className="text-slate-500 dark:text-slate-400">
+              <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3">User</th>
                   <th className="px-4 py-3">Role</th>
@@ -195,7 +195,7 @@ export function UserManagementPage() {
                             event.target.value as "online" | "away" | "offline",
                           )
                         }
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                        className="rounded-md border border-slate-200 bg-white px-4 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                       >
                         <option value="online">online</option>
                         <option value="away">away</option>
@@ -216,7 +216,7 @@ export function UserManagementPage() {
         </p>
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {analytics.topAgents.slice(0, 5).map((agent) => (
-            <div key={agent.id} className="rounded-[24px] bg-slate-100 p-4 dark:bg-slate-900">
+            <div key={agent.id} className="rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
               <p className="font-semibold text-slate-900 dark:text-white">{agent.name}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Badge className="bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">

@@ -37,27 +37,23 @@ export function SignupPage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1120px] items-center px-4 py-8">
-      <div className="grid w-full gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-[28px] border border-slate-200 bg-white p-8 shadow-soft dark:border-slate-800 dark:bg-slate-950">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-600 dark:text-cyan-300">
+      <div className="grid w-full gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+        <section className="rounded-[8px] border border-slate-300 bg-[#0a6896] p-8 text-white shadow-[0_10px_30px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
             Signup
           </p>
-          <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Create your workspace account
+          <h1 className="mt-4 text-[30px] font-semibold tracking-tight">
+            Create account
           </h1>
-          <p className="mt-3 text-base text-slate-600 dark:text-slate-300">
-            New signups create agent access. Admins can adjust team and role permissions later.
+          <p className="mt-3 max-w-sm text-[13px] text-white/78">
+            Create an agent account and start using the dialer.
           </p>
-          <div className="mt-8 space-y-3 text-sm text-slate-600 dark:text-slate-300">
-            <p>Accounts are created in Supabase Auth and synced into the workspace user table.</p>
-            <p>After signup, the dialer, callbacks, and lead queue are ready immediately.</p>
-          </div>
         </section>
 
-        <Card className="rounded-[28px] p-8">
+        <Card className="rounded-[8px] p-8">
           <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Signup</p>
-            <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Signup</p>
+            <h2 className="mt-2 text-[22px] font-semibold text-slate-900 dark:text-white">
               Create account
             </h2>
           </div>
@@ -68,13 +64,13 @@ export function SignupPage() {
                 value={form.name}
                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                 placeholder="Full name"
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
               />
               <input
                 value={form.title}
                 onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
                 placeholder="Job title"
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
               />
             </div>
             <input
@@ -82,31 +78,31 @@ export function SignupPage() {
               value={form.email}
               onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
               placeholder="Email"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+              className="w-full rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
             />
             <input
               type="password"
               value={form.password}
               onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
               placeholder="Password"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+              className="w-full rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
             />
             <div className="grid gap-4 sm:grid-cols-2">
               <input
                 value={form.team}
                 onChange={(event) => setForm((current) => ({ ...current, team: event.target.value }))}
                 placeholder="Team name"
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
               />
               <input
                 value={form.timezone}
                 onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))}
                 placeholder="Timezone"
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
               />
             </div>
             {error ? (
-              <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+              <p className="rounded-md bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
                 {error}
               </p>
             ) : null}
@@ -116,7 +112,7 @@ export function SignupPage() {
             </Button>
           </form>
 
-          <div className="mt-6 flex items-center justify-between gap-3 rounded-[18px] bg-slate-100 px-4 py-4 text-sm dark:bg-slate-900">
+          <div className="mt-6 flex items-center justify-between gap-3 rounded-[6px] border border-slate-200 bg-slate-50 px-4 py-4 text-[12px] dark:border-slate-800 dark:bg-slate-900">
             <span className="text-slate-600 dark:text-slate-300">Already have an account?</span>
             <Link
               to="/login"

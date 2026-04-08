@@ -22,14 +22,6 @@ export function ActivityTimeline({
 }) {
   const content = (
     <div className="space-y-4">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-surface-700 dark:text-cyan-300">
-          CRM Activity Timeline
-        </p>
-        <h3 className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
-          Context before dialing
-        </h3>
-      </div>
       <div className="space-y-3">
         {lead.activities.map((activity) => {
           const Icon = icons[activity.type];

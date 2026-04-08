@@ -13,18 +13,12 @@
 }
 
 body {
-  @apply min-h-screen bg-[#edf3fb] font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-white;
-  background-image:
-    radial-gradient(circle at top left, rgba(52, 116, 255, 0.14), transparent 22%),
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.09), transparent 18%),
-    linear-gradient(180deg, rgba(247, 250, 255, 1), rgba(237, 243, 251, 1));
+  @apply min-h-screen bg-[#c7d3db] font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-white;
+  background-image: linear-gradient(180deg, rgba(214, 223, 230, 1), rgba(199, 211, 219, 1));
 }
 
 .dark body {
-  background-image:
-    radial-gradient(circle at top left, rgba(45, 212, 191, 0.08), transparent 18%),
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 22%),
-    linear-gradient(180deg, rgba(2, 6, 23, 1), rgba(15, 23, 42, 1));
+  background-image: linear-gradient(180deg, rgba(2, 6, 23, 1), rgba(15, 23, 42, 1));
 }
 
 #root {
@@ -32,8 +26,8 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -41,7 +35,7 @@ body {
 }
 
 .panel-glass {
-  @apply border border-white/80 bg-white/96 shadow-soft backdrop-blur-sm dark:border-slate-800/90 dark:bg-slate-900/92;
+  @apply border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-900;
 }
 
 .app-grid {

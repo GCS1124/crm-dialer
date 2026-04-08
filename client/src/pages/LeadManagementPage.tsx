@@ -80,13 +80,13 @@ export function LeadManagementPage() {
       <PageHeader
         eyebrow="Admin Controls"
         title="Lead management"
-        description="Upload CSV or Excel files, assign owners, update lead status in bulk, and keep queue quality clean."
+        description="Upload, assign, and clean your lead queue."
         actions={
           <>
             <select
               value={uploadTargetUserId}
               onChange={(event) => setUploadTargetUserId(event.target.value)}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+              className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
             >
               <option value="">Upload unassigned</option>
               {agents.map((agent) => (
@@ -95,7 +95,7 @@ export function LeadManagementPage() {
                 </option>
               ))}
             </select>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white dark:bg-white dark:text-slate-900">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-[#3b91c3] px-4 py-3 text-sm font-medium text-white dark:bg-white dark:text-slate-900">
               <FileUp size={16} />
               {isBusy ? "Uploading..." : "Upload CSV / Excel"}
               <input
@@ -134,13 +134,13 @@ export function LeadManagementPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search name, company, or email"
-              className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-4 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+              className="w-full rounded-md border border-slate-200 bg-white py-3 pl-11 pr-4 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as "all" | LeadStatus)}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+            className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
           >
             <option value="all">All statuses</option>
             {bulkStatuses.map((status) => (
@@ -152,7 +152,7 @@ export function LeadManagementPage() {
           <select
             value={bulkStatus}
             onChange={(event) => setBulkStatus(event.target.value as LeadStatus)}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+            className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
           >
             {bulkStatuses.map((status) => (
               <option key={status} value={status}>
@@ -185,7 +185,7 @@ export function LeadManagementPage() {
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-100 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+            <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-4">
                   <input
@@ -249,7 +249,7 @@ export function LeadManagementPage() {
                       <select
                         value={lead.assignedAgentId}
                         onChange={(event) => void assignLead(lead.id, event.target.value)}
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                        className="rounded-md border border-slate-200 bg-white px-4 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                       >
                         <option value="">Unassigned</option>
                         {agents.map((agent) => (

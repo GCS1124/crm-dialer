@@ -127,12 +127,12 @@ export function DialerControls({
         </select>
         <div className="rounded-[18px] border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
           {activeCall
-            ? "Auto dial is paused while the current call is active."
+            ? "Auto dial paused during call."
             : autoDialEnabled && autoDialCountdown !== null
-              ? `Next queued record starts calling in ${autoDialCountdown}s.`
+              ? `Next call in ${autoDialCountdown}s.`
               : autoDialEnabled
-                ? "Auto dial is waiting for the next available queue record."
-                : "Enable auto dial to move through the queue automatically after each saved wrap-up."}
+                ? "Waiting for next record."
+                : "Auto dial off."}
         </div>
       </div>
     </Card>

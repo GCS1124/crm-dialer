@@ -42,8 +42,8 @@ export function DashboardPage() {
         }
         description={
           isAgent
-            ? "Track your call output, callbacks, and booked outcomes before jumping back into the queue."
-            : "Monitor live outbound performance across agents, callbacks, and lead movement."
+            ? "Your calls, callbacks, and next leads."
+            : "Live team performance."
         }
       />
 
@@ -114,8 +114,8 @@ export function DashboardPage() {
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Daily Performance
               </p>
-              <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
-                Calls vs connected conversations
+              <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+                Calls vs connected
               </h3>
             </div>
             <Badge className="bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300">
@@ -131,8 +131,8 @@ export function DashboardPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Callback Queue
           </p>
-          <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
-            Follow-ups that need attention
+          <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+            Follow-ups
           </h3>
           <div className="mt-6 space-y-4">
             {[
@@ -142,13 +142,13 @@ export function DashboardPage() {
             ].map((bucket) => (
               <div
                 key={bucket.label}
-                className="rounded-[24px] bg-slate-100 px-4 py-5 dark:bg-slate-900"
+                className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-5 dark:border-slate-800 dark:bg-slate-900"
               >
                 <div className="flex items-center justify-between gap-4">
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <p className="text-[12px] font-medium text-slate-600 dark:text-slate-300">
                     {bucket.label}
                   </p>
-                  <p className="font-display text-3xl font-bold text-slate-900 dark:text-white">
+                  <p className="text-[28px] font-semibold text-slate-900 dark:text-white">
                     {bucket.value}
                   </p>
                 </div>
@@ -163,8 +163,8 @@ export function DashboardPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Disposition Breakdown
           </p>
-          <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
-            Call outcomes by volume
+          <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+            Outcomes
           </h3>
           <div className="mt-5">
             <BreakdownDonutChart data={analytics.dispositionData} />
@@ -175,8 +175,8 @@ export function DashboardPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Pipeline Snapshot
           </p>
-          <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
-            Lead progression
+          <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+            Pipeline
           </h3>
           <div className="mt-5">
             <PipelineBarChart data={analytics.pipelineData} />
@@ -187,7 +187,7 @@ export function DashboardPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             {isAgent ? "Assigned Leads" : "Top Performers"}
           </p>
-          <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+          <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
             {isAgent ? "Priority leads on your desk" : "Agent leaderboard"}
           </h3>
           <div className="mt-5 space-y-3">
@@ -195,7 +195,7 @@ export function DashboardPage() {
               ? activeAssignedLeads.map((lead) => (
                   <div
                     key={lead.id}
-                    className="rounded-[24px] bg-slate-100 p-4 dark:bg-slate-900"
+                    className="rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -215,11 +215,11 @@ export function DashboardPage() {
               : analytics.topAgents.slice(0, 4).map((agent, index) => (
                   <div
                     key={agent.id}
-                    className="rounded-[24px] bg-slate-100 p-4 dark:bg-slate-900"
+                    className="rounded-[8px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900"
                   >
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 font-semibold text-white dark:bg-white dark:text-slate-900">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-slate-900 font-semibold text-white dark:bg-white dark:text-slate-900">
                           {index + 1}
                         </div>
                         <div>

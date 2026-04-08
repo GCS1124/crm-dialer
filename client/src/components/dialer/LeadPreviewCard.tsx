@@ -56,7 +56,7 @@ export function LeadPreviewCard({
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
               Summary
             </p>
-            <p className="mt-1">{lead.notes || "No summary note saved yet for this record."}</p>
+            <p className="mt-1">{lead.notes || "No note saved."}</p>
           </div>
         </div>
       </div>

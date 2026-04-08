@@ -57,14 +57,11 @@ export function PostCallPanel({
     <Card className="space-y-3 border border-cyan-300/60 p-4 dark:border-cyan-500/30">
       <div>
         <p className="text-[11px] uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-300">
-          Wrap-Up Required
+          Wrap-Up
         </p>
         <h3 className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
           Save outcome for {leadName}
         </h3>
-        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-          The next lead stays locked until the outcome and follow-up plan are saved.
-        </p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">

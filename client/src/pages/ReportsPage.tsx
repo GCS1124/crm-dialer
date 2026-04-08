@@ -20,31 +20,31 @@ export function ReportsPage() {
       <PageHeader
         eyebrow="Reports"
         title="Outbound performance reporting"
-        description="Review productivity, outcomes, lead distribution, and top-performer trends without leaving the workspace."
+        description="Team calls, outcomes, and conversions."
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Total team calls</p>
-          <p className="mt-3 font-display text-4xl font-bold text-slate-900 dark:text-white">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Total team calls</p>
+          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
             {metrics.totalTeamCalls}
           </p>
         </Card>
         <Card>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Connected calls</p>
-          <p className="mt-3 font-display text-4xl font-bold text-slate-900 dark:text-white">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Connected calls</p>
+          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
             {metrics.connectedCalls}
           </p>
         </Card>
         <Card>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Callback completion</p>
-          <p className="mt-3 font-display text-4xl font-bold text-slate-900 dark:text-white">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Callback completion</p>
+          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
             {metrics.callbackCompletionRate}%
           </p>
         </Card>
         <Card>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Average duration</p>
-          <p className="mt-3 font-display text-4xl font-bold text-slate-900 dark:text-white">
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">Average duration</p>
+          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
             {formatDuration(metrics.averageCallDuration)}
           </p>
         </Card>
@@ -57,8 +57,8 @@ export function ReportsPage() {
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Daily Productivity
               </p>
-              <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
-                Calls and connections by day
+              <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+                Calls by day
               </h3>
             </div>
             <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
@@ -74,8 +74,8 @@ export function ReportsPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Disposition Breakdown
           </p>
-          <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
-            Outcome mix across calls
+          <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+            Outcome mix
           </h3>
           <div className="mt-5">
             <BreakdownDonutChart data={analytics.dispositionData} />
@@ -92,12 +92,12 @@ export function ReportsPage() {
             {analytics.statusData.map((item) => (
               <div
                 key={item.label}
-                className="flex items-center justify-between rounded-[22px] bg-slate-100 px-4 py-4 dark:bg-slate-900"
+                className="flex items-center justify-between rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900"
               >
-                <p className="text-sm font-medium capitalize text-slate-700 dark:text-slate-200">
+                <p className="text-[12px] font-medium capitalize text-slate-700 dark:text-slate-200">
                   {item.label.replace("_", " ")}
                 </p>
-                <p className="font-display text-2xl font-bold text-slate-900 dark:text-white">
+                <p className="text-[24px] font-semibold text-slate-900 dark:text-white">
                   {item.value}
                 </p>
               </div>
@@ -109,8 +109,8 @@ export function ReportsPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Pipeline Overview
           </p>
-          <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
-            Hot leads, callbacks, appointments, and wins
+          <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+            Pipeline
           </h3>
           <div className="mt-5">
             <PipelineBarChart data={analytics.pipelineData} />
@@ -122,12 +122,12 @@ export function ReportsPage() {
         <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
           Agent-wise performance
         </p>
-        <h3 className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+        <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
           Top performing agents
         </h3>
         <div className="mt-5 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="text-slate-500 dark:text-slate-400">
+            <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-3">Agent</th>
                 <th className="px-4 py-3">Calls</th>

@@ -1,20 +1,24 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
 export function AppShell() {
+  const location = useLocation();
+  const isDialerView = location.pathname === "/dialer";
+
   return (
-    <div className="min-h-screen px-3 py-3 lg:px-4 lg:py-4">
-      <div className="mx-auto flex min-h-[calc(100vh-24px)] max-w-[1680px] gap-3">
-        <div className="hidden w-[108px] shrink-0 lg:block">
+    <div className="min-h-screen px-4 py-5">
+      <div className="mx-auto flex min-h-[calc(100vh-40px)] max-w-[1460px] overflow-hidden rounded-[8px] border border-slate-300 bg-[#edf2f7] shadow-[0_20px_60px_rgba(71,85,105,0.16)] dark:border-slate-800 dark:bg-slate-950">
+        <div className="hidden w-[74px] shrink-0 lg:block">
           <Sidebar />
         </div>
-        <main className="relative min-w-0 flex-1 overflow-hidden rounded-[34px] border border-white/80 bg-white/90 p-3 shadow-panel backdrop-blur-sm dark:border-slate-800/90 dark:bg-slate-950/92 lg:p-4">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-cyan-50/80 to-transparent dark:from-cyan-950/20" />
-          <div className="relative space-y-4">
-            <TopBar />
-            <Outlet />
+        <main className="min-w-0 flex-1 bg-[#edf2f7] dark:bg-slate-950">
+          <div className="space-y-0">
+            {isDialerView ? null : <TopBar />}
+            <div className={isDialerView ? "" : "p-4"}>
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>

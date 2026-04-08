@@ -22,7 +22,7 @@ export function QueuePanel({
     <Card className={cn("overflow-hidden p-0", className)}>
       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-surface-700 dark:text-cyan-300">
-          Queue Panel
+          Queue
         </p>
         <h3 className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
           {leads.length} active records
