@@ -7,7 +7,7 @@ import {
   getWorkspace,
   reopenLead,
   rescheduleLeadCallback,
-} from "../services/appRepository.js";
+} from "../services/repository.js";
 
 const rescheduleSchema = z.object({
   callbackTime: z.string(),

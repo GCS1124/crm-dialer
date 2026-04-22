@@ -6,7 +6,7 @@ import {
   getUserByEmail,
   getUserById,
   syncAuthUserLink,
-} from "../services/appRepository.js";
+} from "../services/repository.js";
 import { signInWithPassword } from "../services/supabaseAuthService.js";
 
 const loginSchema = z.object({

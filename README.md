@@ -22,6 +22,7 @@ Modern CRM-style preview dialer for remote sales teams, appointment setters, and
 - `POST /api/auth/login` signs users in through Supabase Auth and returns a Supabase access token for the app session
 - Admins can create additional users from the user management page
 - If you seed local users, control the initial password with `AUTH_SEED_PASSWORD`
+- If the configured Supabase host is unavailable and `DATA_MODE=auto`, the backend falls back to a local development data store and issues local JWT sessions so the workspace still runs
 
 ## Folder structure
 
@@ -95,6 +96,8 @@ Defined in [client/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20diale
 Defined in [server/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20dialer/server/.env.example).
 
 - `PORT`
+- `DATA_MODE`
+- `JWT_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -171,6 +174,14 @@ Realtime:
 
 - The frontend initializes a Supabase browser client from `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
 - UI refreshes automatically from Supabase realtime subscriptions on call and follow-up changes
+
+## Local development fallback
+
+- `DATA_MODE=auto` tries Supabase first and automatically falls back to a local JSON-backed workspace if the configured Supabase host cannot be reached
+- `DATA_MODE=local` forces local mode even if Supabase is configured
+- In local mode, signup still works and creates local workspace users
+- Seeded local users are available at `admin@previewdialer.local`, `lead@previewdialer.local`, and `agent@previewdialer.local`
+- The seeded local password is whatever you set in `AUTH_SEED_PASSWORD`
 
 ## Twilio integration notes
 

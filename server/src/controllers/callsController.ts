@@ -7,7 +7,7 @@ import {
   getUserById,
   listCallLogs,
   updateManualCallLog,
-} from "../services/appRepository.js";
+} from "../services/repository.js";
 
 const callSchema = z.object({
   leadId: z.string(),

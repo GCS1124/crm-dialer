@@ -1,9 +1,12 @@
 import { FileUp, Search, Trash2, UserRoundPlus } from "lucide-react";
 import { useState, type ChangeEvent } from "react";
+import { toast } from "sonner";
 
+import { AlertBanner } from "../components/shared/AlertBanner";
 import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
+import { EmptyState } from "../components/shared/EmptyState";
 import { PageHeader } from "../components/shared/PageHeader";
 import { useAppState } from "../hooks/useAppState";
 import { parseLeadFile } from "../lib/csv";
@@ -25,8 +28,16 @@ const bulkStatuses: LeadStatus[] = [
 type LeadViewFilter = "all" | "hot" | "untouched" | "callbacks" | "duplicates" | "stale";
 
 export function LeadManagementPage() {
-  const { leads, users, analytics, uploadLeads, assignLead, bulkUpdateLeadStatus, deleteLeads } =
-    useAppState();
+  const {
+    leads,
+    users,
+    analytics,
+    uploadLeads,
+    assignLead,
+    bulkUpdateLeadStatus,
+    deleteLeads,
+    workspaceLoading,
+  } = useAppState();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | LeadStatus>("all");
   const [viewFilter, setViewFilter] = useState<LeadViewFilter>("all");
@@ -35,6 +46,7 @@ export function LeadManagementPage() {
   const [bulkStatus, setBulkStatus] = useState<LeadStatus>("follow_up");
   const [uploadTargetUserId, setUploadTargetUserId] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadTone, setUploadTone] = useState<"success" | "error">("success");
   const [isBusy, setIsBusy] = useState(false);
 
   const agents = users.filter((user) => user.role === "agent");
@@ -97,11 +109,17 @@ export function LeadManagementPage() {
     try {
       const parsed = await parseLeadFile(file);
       const result = await uploadLeads(parsed.rows, uploadTargetUserId || undefined);
+      setUploadTone("success");
       setUploadMessage(
         `Imported ${result.added} leads. ${result.duplicates} duplicates skipped. ${parsed.invalidRows + result.invalidRows} invalid rows ignored.`,
       );
+      toast.success("Lead import completed.");
     } catch (error) {
+      setUploadTone("error");
       setUploadMessage(
+        error instanceof Error ? error.message : "Unable to import that spreadsheet.",
+      );
+      toast.error(
         error instanceof Error ? error.message : "Unable to import that spreadsheet.",
       );
     } finally {
@@ -142,7 +160,16 @@ export function LeadManagementPage() {
             </label>
             <Button
               variant="danger"
-              onClick={() => void deleteLeads(selectedLeadIds)}
+              onClick={async () => {
+                try {
+                  await deleteLeads(selectedLeadIds);
+                  toast.success("Selected leads deleted.");
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error ? error.message : "Unable to delete the selected leads.",
+                  );
+                }
+              }}
               disabled={!selectedLeadIds.length || isBusy}
             >
               <Trash2 size={16} />
@@ -153,9 +180,11 @@ export function LeadManagementPage() {
       />
 
       {uploadMessage ? (
-        <Card className="border border-emerald-300/60 bg-emerald-50/80 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-300">
-          {uploadMessage}
-        </Card>
+        <AlertBanner
+          title={uploadTone === "success" ? "Import status" : "Import failed"}
+          description={uploadMessage}
+          tone={uploadTone === "success" ? "success" : "error"}
+        />
       ) : null}
 
       <div className="grid gap-3 xl:grid-cols-5">
@@ -276,7 +305,16 @@ export function LeadManagementPage() {
           </select>
           <Button
             variant="secondary"
-            onClick={() => void bulkUpdateLeadStatus(selectedLeadIds, bulkStatus)}
+            onClick={async () => {
+              try {
+                await bulkUpdateLeadStatus(selectedLeadIds, bulkStatus);
+                toast.success("Lead statuses updated.");
+              } catch (error) {
+                toast.error(
+                  error instanceof Error ? error.message : "Unable to update the selected leads.",
+                );
+              }
+            }}
             disabled={!selectedLeadIds.length || isBusy}
           >
             Update selected
@@ -296,9 +334,10 @@ export function LeadManagementPage() {
         </div>
       </Card>
 
-      <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
+      {filteredLeads.length ? (
+        <Card className="overflow-hidden p-0">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-4">
@@ -325,8 +364,8 @@ export function LeadManagementPage() {
                 <th className="px-4 py-4">Last Contacted</th>
               </tr>
             </thead>
-            <tbody>
-              {filteredLeads.map((lead) => (
+              <tbody>
+                {filteredLeads.map((lead) => (
                 <tr
                   key={lead.id}
                   className="border-t border-slate-200/80 dark:border-slate-800"
@@ -393,7 +432,18 @@ export function LeadManagementPage() {
                       <UserRoundPlus size={16} className="text-slate-400" />
                       <select
                         value={lead.assignedAgentId}
-                        onChange={(event) => void assignLead(lead.id, event.target.value)}
+                        onChange={async (event) => {
+                          try {
+                            await assignLead(lead.id, event.target.value);
+                            toast.success("Lead assignment updated.");
+                          } catch (error) {
+                            toast.error(
+                              error instanceof Error
+                                ? error.message
+                                : "Unable to assign this lead.",
+                            );
+                          }
+                        }}
                         className="rounded-md border border-slate-200 bg-white px-4 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                       >
                         <option value="">Unassigned</option>
@@ -409,11 +459,39 @@ export function LeadManagementPage() {
                     {formatDateTime(lead.lastContacted)}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : (
+        <EmptyState
+          icon={Search}
+          title={leads.length ? "No leads match this view" : workspaceLoading ? "Loading leads" : "No leads in the workspace"}
+          description={
+            leads.length
+              ? "Adjust the filters or clear the search to see more lead records."
+              : workspaceLoading
+                ? "The CRM is loading lead records."
+                : "Import a CSV or Excel file to start assigning leads."
+          }
+          action={
+            leads.length ? (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSearch("");
+                  setStatusFilter("all");
+                  setTagFilter("all");
+                  setViewFilter("all");
+                }}
+              >
+                Clear filters
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
     </div>
   );
 }

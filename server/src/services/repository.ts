@@ -1,0 +1,138 @@
+import * as localRepository from "./localRepository.js";
+import * as supabaseRepository from "./appRepository.js";
+import { getDataBackend } from "./runtimeMode.js";
+import type {
+  ApiLeadImportRecord,
+  ApiLeadPriority,
+  ApiLeadStatus,
+  ApiUser,
+  CreateCallLogInput,
+  CreateUserInput,
+  SaveDispositionInput,
+  SignupInput,
+} from "../types/index.js";
+
+async function getRepository() {
+  return (await getDataBackend()) === "local" ? localRepository : supabaseRepository;
+}
+
+export async function getUserByEmail(email: string) {
+  return (await getRepository()).getUserByEmail(email);
+}
+
+export async function getUserByAuthUserId(authUserId: string) {
+  return (await getRepository()).getUserByAuthUserId(authUserId);
+}
+
+export async function getUserById(userId: string) {
+  return (await getRepository()).getUserById(userId);
+}
+
+export async function syncAuthUserLink(email: string, authUserId: string) {
+  return (await getRepository()).syncAuthUserLink(email, authUserId);
+}
+
+export async function getWorkspace(currentUser: ApiUser) {
+  return (await getRepository()).getWorkspace(currentUser);
+}
+
+export async function listUsers() {
+  return (await getRepository()).listUsers();
+}
+
+export async function listLeads(currentUser: ApiUser) {
+  return (await getRepository()).listLeads(currentUser);
+}
+
+export async function listCallLogs(currentUser: ApiUser) {
+  return (await getRepository()).listCallLogs(currentUser);
+}
+
+export async function createManualCallLog(input: CreateCallLogInput, currentUser: ApiUser) {
+  return (await getRepository()).createManualCallLog(input, currentUser);
+}
+
+export async function updateManualCallLog(
+  callId: string,
+  input: CreateCallLogInput,
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).updateManualCallLog(callId, input, currentUser);
+}
+
+export async function deleteManualCallLog(callId: string, currentUser: ApiUser) {
+  return (await getRepository()).deleteManualCallLog(callId, currentUser);
+}
+
+export async function importLeads(
+  records: ApiLeadImportRecord[],
+  currentUser: ApiUser,
+  assignToUserId?: string,
+) {
+  return (await getRepository()).importLeads(records, currentUser, assignToUserId);
+}
+
+export async function assignLeadToUser(
+  leadId: string,
+  userId: string,
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).assignLeadToUser(leadId, userId, currentUser);
+}
+
+export async function updateLeadStatuses(
+  leadIds: string[],
+  status: ApiLeadStatus,
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).updateLeadStatuses(leadIds, status, currentUser);
+}
+
+export async function deleteLeadRecords(leadIds: string[], currentUser: ApiUser) {
+  return (await getRepository()).deleteLeadRecords(leadIds, currentUser);
+}
+
+export async function markLeadInvalid(leadId: string, currentUser: ApiUser) {
+  return (await getRepository()).markLeadInvalid(leadId, currentUser);
+}
+
+export async function saveDisposition(input: SaveDispositionInput, currentUser: ApiUser) {
+  return (await getRepository()).saveDisposition(input, currentUser);
+}
+
+export async function rescheduleLeadCallback(
+  leadId: string,
+  callbackAt: string,
+  priority: ApiLeadPriority,
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).rescheduleLeadCallback(leadId, callbackAt, priority, currentUser);
+}
+
+export async function completeLeadCallback(leadId: string, currentUser: ApiUser) {
+  return (await getRepository()).completeLeadCallback(leadId, currentUser);
+}
+
+export async function reopenLead(leadId: string, currentUser: ApiUser) {
+  return (await getRepository()).reopenLead(leadId, currentUser);
+}
+
+export async function createWorkspaceUser(input: CreateUserInput, currentUser: ApiUser) {
+  return (await getRepository()).createWorkspaceUser(input, currentUser);
+}
+
+export async function createPublicSignup(input: SignupInput) {
+  return (await getRepository()).createPublicSignup(input);
+}
+
+export async function updateWorkspaceUserStatus(
+  userId: string,
+  status: "online" | "away" | "offline",
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).updateWorkspaceUserStatus(userId, status, currentUser);
+}
+
+export async function getVoiceIdentity(user: ApiUser) {
+  return (await getRepository()).getVoiceIdentity(user);
+}

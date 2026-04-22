@@ -7,6 +7,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
@@ -129,8 +130,15 @@ function buildCalendarEvents(leads: Lead[]) {
 }
 
 export function CallbacksPage() {
-  const { currentUser, leads, rescheduleCallback, markCallbackCompleted, reopenLead, analytics } =
-    useAppState();
+  const {
+    currentUser,
+    leads,
+    rescheduleCallback,
+    markCallbackCompleted,
+    reopenLead,
+    analytics,
+    workspaceLoading,
+  } = useAppState();
   const [rescheduleMap, setRescheduleMap] = useState<Record<string, string>>({});
   const [priorityMap, setPriorityMap] = useState<Record<string, LeadPriority>>({});
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -262,24 +270,59 @@ export function CallbacksPage() {
                   <div className="flex flex-wrap gap-3">
                     <Button
                       variant="secondary"
-                      onClick={() =>
-                        void rescheduleCallback(
-                          lead.id,
-                          new Date(
-                            rescheduleMap[lead.id] ?? toDatetimeLocalInput(lead.callbackTime),
-                          ).toISOString(),
-                          priorityMap[lead.id] ?? lead.priority,
-                        )
-                      }
+                      onClick={async () => {
+                        try {
+                          await rescheduleCallback(
+                            lead.id,
+                            new Date(
+                              rescheduleMap[lead.id] ?? toDatetimeLocalInput(lead.callbackTime),
+                            ).toISOString(),
+                            priorityMap[lead.id] ?? lead.priority,
+                          );
+                          toast.success("Follow-up rescheduled.");
+                        } catch (error) {
+                          toast.error(
+                            error instanceof Error
+                              ? error.message
+                              : "Unable to reschedule this follow-up.",
+                          );
+                        }
+                      }}
                     >
                       <CalendarClock size={16} />
                       Reschedule
                     </Button>
-                    <Button variant="primary" onClick={() => void markCallbackCompleted(lead.id)}>
+                    <Button
+                      variant="primary"
+                      onClick={async () => {
+                        try {
+                          await markCallbackCompleted(lead.id);
+                          toast.success("Follow-up marked completed.");
+                        } catch (error) {
+                          toast.error(
+                            error instanceof Error
+                              ? error.message
+                              : "Unable to complete this follow-up.",
+                          );
+                        }
+                      }}
+                    >
                       <CheckCircle2 size={16} />
                       Mark completed
                     </Button>
-                    <Button variant="ghost" onClick={() => void reopenLead(lead.id)}>
+                    <Button
+                      variant="ghost"
+                      onClick={async () => {
+                        try {
+                          await reopenLead(lead.id);
+                          toast.success("Lead reopened.");
+                        } catch (error) {
+                          toast.error(
+                            error instanceof Error ? error.message : "Unable to reopen this lead.",
+                          );
+                        }
+                      }}
+                    >
                       <RotateCcw size={16} />
                       Reopen lead
                     </Button>
@@ -370,8 +413,12 @@ export function CallbacksPage() {
         ) : (
           <EmptyState
             icon={BellRing}
-            title="No follow-ups scheduled"
-            description="As agents log callback outcomes, this workspace will organize due and overdue follow-ups automatically."
+            title={workspaceLoading ? "Loading follow-ups" : "No follow-ups scheduled"}
+            description={
+              workspaceLoading
+                ? "The CRM is loading scheduled follow-ups."
+                : "As agents log callback outcomes, this workspace will organize due and overdue follow-ups automatically."
+            }
           />
         )
       ) : (

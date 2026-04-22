@@ -58,7 +58,7 @@ export function SettingsPage() {
             <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
               {settingsStatus.authMode === "supabase"
                 ? "Supabase Auth with backend-issued workspace JWT"
-                : settingsStatus.authMode}
+                : "Local development auth with backend-issued JWT sessions"}
             </p>
           </div>
 
@@ -123,6 +123,15 @@ export function SettingsPage() {
               label="Service role configured"
               value={settingsStatus.supabase.serviceRoleConfigured}
             />
+            <StatusRow
+              label="Realtime available"
+              value={settingsStatus.supabase.realtimeAvailable ?? settingsStatus.supabase.connected}
+            />
+            {settingsStatus.supabase.reason ? (
+              <div className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                {settingsStatus.supabase.reason}
+              </div>
+            ) : null}
           </Card>
         </div>
       </div>

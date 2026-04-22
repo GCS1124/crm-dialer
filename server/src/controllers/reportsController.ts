@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 
-import { getUserById, getWorkspace } from "../services/appRepository.js";
+import { getUserById, getWorkspace } from "../services/repository.js";
 
 export async function reportsOverviewController(_req: Request, res: Response) {
   const sessionUser = res.locals.user as { sub?: string } | undefined;

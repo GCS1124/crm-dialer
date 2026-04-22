@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 
-import { getUserById, getVoiceIdentity, saveDisposition } from "../services/appRepository.js";
+import { getUserById, getVoiceIdentity, saveDisposition } from "../services/repository.js";
 import {
   buildOutboundVoiceResponse,
   createVoiceAccessToken,
@@ -57,12 +57,14 @@ export async function voiceTokenController(_req: Request, res: Response) {
     });
   }
 
+  const identity = await getVoiceIdentity(currentUser);
+
   return res.json({
     available: true,
     callerId: twilio.callerId,
     appSid: twilio.appSid,
-    identity: getVoiceIdentity(currentUser),
-    token: createVoiceAccessToken(getVoiceIdentity(currentUser)),
+    identity,
+    token: createVoiceAccessToken(identity),
   });
 }
 

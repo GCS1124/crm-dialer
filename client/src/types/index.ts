@@ -302,7 +302,7 @@ export interface TwilioDialerConfig {
 }
 
 export interface WorkspaceSettingsStatus {
-  authMode: "supabase";
+  authMode: "supabase" | "local";
   signupEnabled: boolean;
   importFormats: string[];
   twilio: {
@@ -320,6 +320,24 @@ export interface WorkspaceSettingsStatus {
     connected: boolean;
     publishableKeyConfigured: boolean;
     serviceRoleConfigured: boolean;
+    reason?: string | null;
+    realtimeAvailable?: boolean;
+  };
+}
+
+export interface RuntimeStatus {
+  backend: "ok";
+  dataMode: "supabase" | "local";
+  signupEnabled: boolean;
+  message: string;
+  supabase: {
+    configured: boolean;
+    reachable: boolean;
+    host: string | null;
+    reason: string | null;
+  };
+  twilio: {
+    available: boolean;
   };
 }
 

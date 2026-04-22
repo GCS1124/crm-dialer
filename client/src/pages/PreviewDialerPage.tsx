@@ -268,6 +268,7 @@ export function PreviewDialerPage() {
       return;
     }
 
+    setUploadMessage("");
     setUploading(true);
     try {
       const parsed = await parseLeadFile(file);
@@ -275,7 +276,10 @@ export function PreviewDialerPage() {
         parsed.rows,
         currentUser.role === "agent" ? currentUser.id : undefined,
       );
-      setUploadMessage(`${result.added} leads added, ${result.duplicates} duplicates skipped.`);
+      const invalidRows = parsed.invalidRows + result.invalidRows;
+      setUploadMessage(
+        `${result.added} leads added. ${result.duplicates} duplicates skipped.${invalidRows ? ` ${invalidRows} invalid rows ignored.` : ""}`,
+      );
     } catch (error) {
       setUploadMessage(
         error instanceof Error ? error.message : "Unable to load that file into the queue.",
@@ -318,11 +322,55 @@ export function PreviewDialerPage() {
   };
 
   if (!activeLead) {
+    const uploadFailed =
+      uploadMessage.toLowerCase().includes("unable") ||
+      uploadMessage.toLowerCase().includes("error");
+
     return (
       <EmptyState
         icon={PhoneOff}
         title="No leads available in the current queue"
-        description="Adjust the queue filters or import another spreadsheet to keep dialing."
+        description="Import a spreadsheet here or reset the queue filter to bring leads back into the dialer."
+        action={
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-[#2d84b5] bg-[#3b91c3] px-4 py-2.5 text-[12px] font-medium text-white transition hover:bg-[#327eab]">
+                <FileUp size={14} />
+                {uploading ? "Importing..." : "Upload CSV / Excel"}
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={handleBulkFileUpload}
+                />
+              </label>
+              {queueFilter !== "all" ? (
+                <Button
+                  size="md"
+                  variant="secondary"
+                  onClick={() => setQueueFilter("all")}
+                >
+                  Show all active
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Accepted formats: `.csv`, `.xlsx`, `.xls`
+            </p>
+            {uploadMessage ? (
+              <p
+                className={cn(
+                  "max-w-md text-[12px]",
+                  uploadFailed
+                    ? "text-rose-700 dark:text-rose-300"
+                    : "text-emerald-700 dark:text-emerald-300",
+                )}
+              >
+                {uploadMessage}
+              </p>
+            ) : null}
+          </div>
+        }
       />
     );
   }

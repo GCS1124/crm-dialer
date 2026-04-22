@@ -12,6 +12,7 @@ import { PerformanceChart } from "../components/charts/PerformanceChart";
 import { PipelineBarChart } from "../components/charts/PipelineBarChart";
 import { Badge } from "../components/shared/Badge";
 import { Card } from "../components/shared/Card";
+import { EmptyState } from "../components/shared/EmptyState";
 import { PageHeader } from "../components/shared/PageHeader";
 import { StatCard } from "../components/shared/StatCard";
 import { useAppState } from "../hooks/useAppState";
@@ -25,7 +26,7 @@ import {
 } from "../lib/utils";
 
 export function DashboardPage() {
-  const { currentUser, leads, analytics } = useAppState();
+  const { currentUser, leads, analytics, workspaceLoading } = useAppState();
 
   if (!currentUser) {
     return null;
@@ -49,6 +50,7 @@ export function DashboardPage() {
     (activity) =>
       activity.type === "callback" && activity.description.toLowerCase().includes("completed"),
   ).length;
+  const hasWorkspaceData = leads.length > 0 || allCalls.length > 0;
 
   return (
     <div className="space-y-5">
@@ -61,6 +63,20 @@ export function DashboardPage() {
             : "Live team performance, duplicate watch, and the next action queue."
         }
       />
+
+      {!hasWorkspaceData ? (
+        <EmptyState
+          icon={Users2}
+          title={workspaceLoading ? "Loading workspace" : "No CRM activity yet"}
+          description={
+            workspaceLoading
+              ? "The dashboard is waiting for the latest CRM data."
+              : isAgent
+                ? "Assigned leads and call activity will appear here once the queue is populated."
+                : "Import leads and assign them to agents to start generating call and follow-up metrics."
+          }
+        />
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {isAgent && agentMetrics ? (

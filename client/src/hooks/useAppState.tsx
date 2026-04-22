@@ -117,6 +117,8 @@ const emptySettingsStatus: WorkspaceSettingsStatus = {
     connected: false,
     publishableKeyConfigured: false,
     serviceRoleConfigured: false,
+    reason: "Workspace settings have not loaded yet.",
+    realtimeAvailable: false,
   },
 };
 
@@ -130,6 +132,8 @@ interface AppStateContextValue {
   theme: ThemeMode;
   sessionReady: boolean;
   workspaceLoading: boolean;
+  workspaceError: string | null;
+  lastWorkspaceSyncAt: string | null;
   queueSort: QueueSort;
   queueFilter: QueueFilter;
   currentLeadId: string | null;
@@ -205,6 +209,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [twilioConfig, setTwilioConfig] = useState<TwilioDialerConfig>(emptyTwilioConfig);
   const [sessionReady, setSessionReady] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [lastWorkspaceSyncAt, setLastWorkspaceSyncAt] = useState<string | null>(null);
   const [queueSort, setQueueSort] = useState<QueueSort>("priority");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
   const [autoDialEnabled, setAutoDialEnabled] = usePersistentState<boolean>(
@@ -266,6 +272,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setAnalytics(emptyAnalytics);
           setSettingsStatus(emptySettingsStatus);
           setTwilioConfig(emptyTwilioConfig);
+          setWorkspaceError(null);
+          setLastWorkspaceSyncAt(null);
           setSessionReady(true);
         }
         return;
@@ -281,7 +289,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         }
 
         setCurrentUser(payload.user);
-        await loadWorkspace(authToken);
+        await loadWorkspace(authToken, { silent: true });
       } catch {
         if (active) {
           cleanupSession();
@@ -383,23 +391,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     const interval = window.setInterval(() => {
-      void loadWorkspace(authToken);
+      void loadWorkspace(authToken, { silent: true });
     }, 30000);
 
     return () => window.clearInterval(interval);
   }, [authToken]);
 
   useEffect(() => {
-    if (!authToken) {
+    if (
+      !authToken ||
+      settingsStatus.authMode !== "supabase" ||
+      !settingsStatus.supabase.connected ||
+      !supabase
+    ) {
       return;
     }
 
-    supabase.realtime.setAuth(authToken);
+    const supabaseClient = supabase;
+
+    supabaseClient.realtime.setAuth(authToken);
     const handleChange = () => {
-      void loadWorkspace(authToken);
+      void loadWorkspace(authToken, { silent: true });
     };
 
-    const channel = supabase
+    const channel = supabaseClient
       .channel(`crm-live-${currentUser?.id ?? "session"}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "call_logs" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "callbacks" }, handleChange)
@@ -408,9 +423,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabaseClient.removeChannel(channel);
     };
-  }, [authToken, currentUser?.id]);
+  }, [authToken, currentUser?.id, settingsStatus.authMode, settingsStatus.supabase.connected]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -452,10 +467,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
   }, [currentUser, leads]);
 
-  async function loadWorkspace(tokenOverride?: string | null) {
+  async function loadWorkspace(
+    tokenOverride?: string | null,
+    options: { silent?: boolean } = {},
+  ) {
     const token = tokenOverride ?? authToken;
     if (!token) {
-      return;
+      return false;
     }
 
     setWorkspaceLoading(true);
@@ -469,6 +487,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setAnalytics(payload.analytics);
       setSettingsStatus(payload.settings);
       setTwilioConfig(payload.twilio);
+      setWorkspaceError(null);
+      setLastWorkspaceSyncAt(new Date().toISOString());
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to sync the CRM workspace.";
+      if (!options.silent || !workspaceError) {
+        setWorkspaceError(message);
+      }
+      return false;
     } finally {
       setWorkspaceLoading(false);
     }
@@ -482,6 +510,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setAnalytics(emptyAnalytics);
     setSettingsStatus(emptySettingsStatus);
     setTwilioConfig(emptyTwilioConfig);
+    setWorkspaceError(null);
+    setLastWorkspaceSyncAt(null);
     setAutoDialCountdown(null);
     setCurrentLeadId(null);
     setActiveCall(null);
@@ -551,7 +581,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
       setAuthToken(payload.token);
       setCurrentUser(payload.user);
-      await loadWorkspace(payload.token);
+      setWorkspaceError(null);
+      await loadWorkspace(payload.token, { silent: true });
       setSessionReady(true);
 
       return { success: true };
@@ -567,6 +598,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    void supabase?.auth.signOut();
     cleanupSession();
     setSessionReady(true);
   };
@@ -594,7 +626,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
       setAuthToken(payload.token);
       setCurrentUser(payload.user);
-      await loadWorkspace(payload.token);
+      setWorkspaceError(null);
+      await loadWorkspace(payload.token, { silent: true });
       setSessionReady(true);
 
       return { success: true };
@@ -607,7 +640,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshWorkspace = async () => {
-    await loadWorkspace();
+    await loadWorkspace(undefined, { silent: false });
   };
 
   const selectLead = (leadId: string) => {
@@ -975,6 +1008,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         theme,
         sessionReady,
         workspaceLoading,
+        workspaceError,
+        lastWorkspaceSyncAt,
         queueSort,
         queueFilter,
         currentLeadId,

@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
 
 import { AppShell } from "./components/layout/AppShell";
 import { useAppState } from "./hooks/useAppState";
@@ -110,112 +111,115 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          currentUser ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <LazyPage>
-              <LoginPage />
-            </LazyPage>
-          )
-        }
-      />
-      <Route
-        path="/signup"
-        element={
-          currentUser ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <LazyPage>
-              <SignupPage />
-            </LazyPage>
-          )
-        }
-      />
-      <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+    <>
+      <Toaster position="top-right" richColors closeButton />
+      <Routes>
         <Route
-          path="/dashboard"
+          path="/login"
           element={
-            <LazyPage>
-              <DashboardPage />
-            </LazyPage>
-          }
-        />
-        <Route
-          path="/calls"
-          element={
-            <LazyPage>
-              <CallsPage />
-            </LazyPage>
-          }
-        />
-        <Route
-          path="/dialer"
-          element={
-            <LazyPage>
-              <PreviewDialerPage />
-            </LazyPage>
-          }
-        />
-        <Route
-          path="/callbacks"
-          element={
-            <LazyPage>
-              <CallbacksPage />
-            </LazyPage>
-          }
-        />
-        <Route
-          path="/leads"
-          element={
-            <ManagerRoute>
+            currentUser ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
               <LazyPage>
-                <LeadManagementPage />
+                <LoginPage />
               </LazyPage>
-            </ManagerRoute>
+            )
           }
         />
         <Route
-          path="/reports"
+          path="/signup"
           element={
-            <ManagerRoute>
+            currentUser ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
               <LazyPage>
-                <ReportsPage />
+                <SignupPage />
               </LazyPage>
-            </ManagerRoute>
+            )
           }
         />
-        <Route
-          path="/users"
-          element={
-            <AdminRoute>
+        <Route element={<ProtectedRoute />}>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route
+            path="/dashboard"
+            element={
               <LazyPage>
-                <UserManagementPage />
+                <DashboardPage />
               </LazyPage>
-            </AdminRoute>
-          }
-        />
+            }
+          />
+          <Route
+            path="/calls"
+            element={
+              <LazyPage>
+                <CallsPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="/dialer"
+            element={
+              <LazyPage>
+                <PreviewDialerPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="/callbacks"
+            element={
+              <LazyPage>
+                <CallbacksPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="/leads"
+            element={
+              <ManagerRoute>
+                <LazyPage>
+                  <LeadManagementPage />
+                </LazyPage>
+              </ManagerRoute>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <ManagerRoute>
+                <LazyPage>
+                  <ReportsPage />
+                </LazyPage>
+              </ManagerRoute>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <AdminRoute>
+                <LazyPage>
+                  <UserManagementPage />
+                </LazyPage>
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <LazyPage>
+                <SettingsPage />
+              </LazyPage>
+            }
+          />
+        </Route>
         <Route
-          path="/settings"
+          path="*"
           element={
             <LazyPage>
-              <SettingsPage />
+              <NotFoundPage />
             </LazyPage>
           }
         />
-      </Route>
-      <Route
-        path="*"
-        element={
-          <LazyPage>
-            <NotFoundPage />
-          </LazyPage>
-        }
-      />
-    </Routes>
+      </Routes>
+    </>
   );
 }

@@ -278,7 +278,7 @@ export interface WorkspaceAnalytics {
 }
 
 export interface WorkspaceSettingsStatus {
-  authMode: "supabase";
+  authMode: "supabase" | "local";
   signupEnabled: boolean;
   importFormats: string[];
   twilio: {
@@ -296,6 +296,8 @@ export interface WorkspaceSettingsStatus {
     connected: boolean;
     publishableKeyConfigured: boolean;
     serviceRoleConfigured: boolean;
+    reason?: string | null;
+    realtimeAvailable?: boolean;
   };
 }
 

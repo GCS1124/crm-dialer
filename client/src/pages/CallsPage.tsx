@@ -1,15 +1,15 @@
 import {
-  CalendarClock,
-  Clock3,
+  Pencil,
   PhoneCall,
   Plus,
   Search,
   Sparkles,
   Trash2,
-  Pencil,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
+import { AlertBanner } from "../components/shared/AlertBanner";
 import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
@@ -92,19 +92,30 @@ function toFormInput(call?: CallLog): CallLogFormInput {
 }
 
 export function CallsPage() {
-  const { leads, currentUser, createCallLog, updateCallLog, deleteCallLog } = useAppState();
+  const {
+    leads,
+    currentUser,
+    createCallLog,
+    updateCallLog,
+    deleteCallLog,
+    workspaceLoading,
+  } = useAppState();
   const [query, setQuery] = useState("");
   const [viewFilter, setViewFilter] = useState<CallViewFilter>("all");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingCall, setEditingCall] = useState<CallLog | null>(null);
   const [form, setForm] = useState<CallLogFormInput>(toFormInput());
   const [saving, setSaving] = useState(false);
+  const [editorError, setEditorError] = useState("");
 
   const calls = useMemo(
     () =>
       leads
         .flatMap((lead) => lead.callHistory)
-        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+        ),
     [leads],
   );
 
@@ -143,30 +154,37 @@ export function CallsPage() {
   const averageDuration = calls.length
     ? calls.reduce((sum, call) => sum + call.durationSeconds, 0) / calls.length
     : 0;
+  const hasFilters = Boolean(query.trim()) || viewFilter !== "all";
 
   const aiPreview = buildAiPreview(form.notes, form.status, form.callbackAt);
+  const activeLead = leads.find((lead) => lead.id === form.leadId);
 
   const openCreate = () => {
     const defaultLeadId = leads[0]?.id ?? "";
     setEditingCall(null);
     setForm({ ...toFormInput(), leadId: defaultLeadId });
+    setEditorError("");
     setEditorOpen(true);
   };
 
   const openEdit = (call: CallLog) => {
     setEditingCall(call);
     setForm(toFormInput(call));
+    setEditorError("");
     setEditorOpen(true);
   };
 
-  const activeLead = leads.find((lead) => lead.id === form.leadId);
+  const clearFilters = () => {
+    setQuery("");
+    setViewFilter("all");
+  };
 
   return (
     <div className="space-y-5">
       <PageHeader
         eyebrow="Call Management"
         title="Calls workspace"
-        description="Log calls fast, enrich them with AI guidance, and keep follow-ups from slipping."
+        description="Log calls, keep summaries clean, and convert follow-ups into next actions."
         actions={
           <Button onClick={openCreate}>
             <Plus size={16} />
@@ -255,10 +273,12 @@ export function CallsPage() {
                         {call.callType}
                       </Badge>
                       <Badge className={getSentimentTone(call.sentiment)}>{call.sentiment}</Badge>
-                      {lead ? <Badge className={getPriorityTone(lead.priority)}>{lead.priority}</Badge> : null}
+                      {lead ? (
+                        <Badge className={getPriorityTone(lead.priority)}>{lead.priority}</Badge>
+                      ) : null}
                     </div>
                     <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                      {formatPhone(call.phone)} • {call.agentName} • {formatDateTime(call.createdAt)}
+                      {formatPhone(call.phone)} | {call.agentName} | {formatDateTime(call.createdAt)}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -266,7 +286,20 @@ export function CallsPage() {
                       <Pencil size={14} />
                       Edit
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => void deleteCallLog(call.id)}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        try {
+                          await deleteCallLog(call.id);
+                          toast.success("Call log deleted.");
+                        } catch (error) {
+                          toast.error(
+                            error instanceof Error ? error.message : "Unable to delete the call log.",
+                          );
+                        }
+                      }}
+                    >
                       <Trash2 size={14} />
                     </Button>
                   </div>
@@ -296,7 +329,9 @@ export function CallsPage() {
                         {call.outcomeSummary || "Summary generated from notes"}
                       </p>
                       <p>
-                        <span className="font-medium text-slate-900 dark:text-white">Next follow-up:</span>{" "}
+                        <span className="font-medium text-slate-900 dark:text-white">
+                          Next follow-up:
+                        </span>{" "}
                         {call.followUpAt ? formatDateTime(call.followUpAt) : "Not scheduled"}
                       </p>
                     </div>
@@ -309,11 +344,36 @@ export function CallsPage() {
             );
           })}
         </div>
-      ) : (
+      ) : calls.length ? (
         <EmptyState
           icon={PhoneCall}
           title="No call logs match this view"
-          description="Use quick add call to capture conversations and keep the CRM timeline complete."
+          description="Adjust the filters or clear the search to see more activity."
+          action={
+            hasFilters ? (
+              <Button variant="secondary" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <EmptyState
+          icon={PhoneCall}
+          title={workspaceLoading ? "Loading call activity" : "No call logs yet"}
+          description={
+            workspaceLoading
+              ? "The CRM is loading recent activity."
+              : "Use quick add call to capture the first interaction and start building lead history."
+          }
+          action={
+            !workspaceLoading ? (
+              <Button onClick={openCreate}>
+                <Plus size={16} />
+                Quick add call
+              </Button>
+            ) : undefined
+          }
         />
       )}
 
@@ -350,25 +410,32 @@ export function CallsPage() {
                     <span className="font-medium text-slate-700 dark:text-slate-200">Contact</span>
                     <select
                       value={form.leadId}
-                      onChange={(event) => setForm((current) => ({ ...current, leadId: event.target.value }))}
+                      onChange={(event) =>
+                        setForm((current) => ({ ...current, leadId: event.target.value }))
+                      }
                       disabled={Boolean(editingCall)}
                       className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                     >
                       <option value="">Select lead</option>
                       {leads.map((lead) => (
                         <option key={lead.id} value={lead.id}>
-                          {lead.fullName} {lead.company ? `• ${lead.company}` : ""}
+                          {lead.fullName} {lead.company ? `| ${lead.company}` : ""}
                         </option>
                       ))}
                     </select>
                   </label>
 
                   <label className="space-y-1.5 text-[11px]">
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Call type</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      Call type
+                    </span>
                     <select
                       value={form.callType}
                       onChange={(event) =>
-                        setForm((current) => ({ ...current, callType: event.target.value as CallType }))
+                        setForm((current) => ({
+                          ...current,
+                          callType: event.target.value as CallType,
+                        }))
                       }
                       className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                     >
@@ -378,7 +445,9 @@ export function CallsPage() {
                   </label>
 
                   <label className="space-y-1.5 text-[11px]">
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Call duration</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      Call duration
+                    </span>
                     <input
                       type="number"
                       min={0}
@@ -394,11 +463,16 @@ export function CallsPage() {
                   </label>
 
                   <label className="space-y-1.5 text-[11px]">
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Call status</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      Call status
+                    </span>
                     <select
                       value={form.status}
                       onChange={(event) =>
-                        setForm((current) => ({ ...current, status: event.target.value as CallLogStatus }))
+                        setForm((current) => ({
+                          ...current,
+                          status: event.target.value as CallLogStatus,
+                        }))
                       }
                       className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                     >
@@ -409,14 +483,18 @@ export function CallsPage() {
                   </label>
 
                   <label className="space-y-1.5 text-[11px]">
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Follow-up time</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      Follow-up time
+                    </span>
                     <input
                       type="datetime-local"
                       value={toDatetimeLocalInput(form.callbackAt)}
                       onChange={(event) =>
                         setForm((current) => ({
                           ...current,
-                          callbackAt: event.target.value ? new Date(event.target.value).toISOString() : "",
+                          callbackAt: event.target.value
+                            ? new Date(event.target.value).toISOString()
+                            : "",
                         }))
                       }
                       className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
@@ -424,11 +502,16 @@ export function CallsPage() {
                   </label>
 
                   <label className="space-y-1.5 text-[11px]">
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Priority</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      Priority
+                    </span>
                     <select
                       value={form.priority}
                       onChange={(event) =>
-                        setForm((current) => ({ ...current, priority: event.target.value as LeadPriority }))
+                        setForm((current) => ({
+                          ...current,
+                          priority: event.target.value as LeadPriority,
+                        }))
                       }
                       className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                     >
@@ -468,7 +551,9 @@ export function CallsPage() {
                   <textarea
                     rows={5}
                     value={form.notes}
-                    onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, notes: event.target.value }))
+                    }
                     placeholder="Capture objections, buying signals, timing, and any promised next step."
                     className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                   />
@@ -505,9 +590,19 @@ export function CallsPage() {
                     {activeLead?.fullName || "Choose a lead"}
                   </p>
                   <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                    {activeLead ? `${formatPhone(activeLead.phone)} • ${activeLead.company || "No company"}` : "The CRM will link this call to the selected lead and update its timeline automatically."}
+                    {activeLead
+                      ? `${formatPhone(activeLead.phone)} | ${activeLead.company || "No company"}`
+                      : "The CRM will link this call to the selected lead and update its timeline automatically."}
                   </p>
                 </Card>
+
+                {editorError ? (
+                  <AlertBanner
+                    title="Unable to save call"
+                    description={editorError}
+                    tone="error"
+                  />
+                ) : null}
 
                 <div className="flex justify-end gap-2">
                   <Button variant="secondary" onClick={() => setEditorOpen(false)}>
@@ -516,16 +611,27 @@ export function CallsPage() {
                   <Button
                     onClick={async () => {
                       if (!form.leadId) {
+                        setEditorError("Choose a lead before saving the call log.");
                         return;
                       }
+
                       setSaving(true);
+                      setEditorError("");
+
                       try {
                         if (editingCall) {
                           await updateCallLog(editingCall.id, form);
+                          toast.success("Call log updated.");
                         } else {
                           await createCallLog(form);
+                          toast.success("Call log saved.");
                         }
+
                         setEditorOpen(false);
+                      } catch (error) {
+                        setEditorError(
+                          error instanceof Error ? error.message : "Unable to save the call log.",
+                        );
                       } finally {
                         setSaving(false);
                       }

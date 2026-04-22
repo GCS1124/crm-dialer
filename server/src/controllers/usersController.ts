@@ -6,7 +6,7 @@ import {
   getUserById,
   listUsers,
   updateWorkspaceUserStatus,
-} from "../services/appRepository.js";
+} from "../services/repository.js";
 
 const inviteSchema = z.object({
   name: z.string().min(1),

@@ -9,7 +9,7 @@ import {
   listLeads,
   markLeadInvalid,
   updateLeadStatuses,
-} from "../services/appRepository.js";
+} from "../services/repository.js";
 import type { ApiLeadPriority, ApiLeadStatus } from "../types/index.js";
 
 const leadStatusEnum = z.enum([

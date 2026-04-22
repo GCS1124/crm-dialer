@@ -5,6 +5,8 @@ dotenv.config();
 
 const schema = z.object({
   PORT: z.coerce.number().default(4000),
+  DATA_MODE: z.enum(["auto", "supabase", "local"]).default("auto"),
+  JWT_SECRET: z.string().default("preview-dialer-jwt-secret-local"),
   SUPABASE_URL: z.string().default("https://your-project.supabase.co"),
   SUPABASE_PUBLISHABLE_KEY: z.string().default("publishable-key"),
   SUPABASE_ANON_KEY: z.string().default("anon-key"),

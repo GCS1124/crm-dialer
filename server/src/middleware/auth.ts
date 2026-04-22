@@ -4,8 +4,8 @@ import {
   getUserByAuthUserId,
   getUserByEmail,
   syncAuthUserLink,
-} from "../services/appRepository.js";
-import { supabaseAdmin } from "../services/supabaseAdmin.js";
+} from "../services/repository.js";
+import { verifyAccessToken } from "../services/supabaseAuthService.js";
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
@@ -15,8 +15,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   try {
     const token = header.replace("Bearer ", "");
-    const authResult = await supabaseAdmin.auth.getUser(token);
-    if (authResult.error || !authResult.data.user) {
+    const authResult = await verifyAccessToken(token);
+    if (!authResult.success || !authResult.data.user) {
       return res.status(401).json({ message: "Invalid or expired token" });
     }
 
