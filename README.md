@@ -12,7 +12,7 @@ Modern CRM-style preview dialer for remote sales teams, appointment setters, and
 - Lead upload and assignment page with CSV and Excel parsing plus duplicate handling
 - Reports dashboard with charts and agent leaderboard
 - Admin user management page
-- Settings page with backend-managed Twilio and Supabase configuration
+- Settings page with backend-managed CRM softphone and Supabase configuration
 - Node.js API for auth, leads, dialer, callbacks, reports, users, and workspace bootstrap
 - Supabase/Postgres schema and seed SQL
 
@@ -83,29 +83,69 @@ npm.cmd run dev
 npm.cmd run build
 ```
 
+## Vercel deployment
+
+This repo is wired for a single Vercel project:
+
+- the frontend is built from `client/` into `client/dist`
+- the Node API runs as one Vercel Function from [api/[[...route]].ts](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJECTS/crm%20dialer/api/[[...route]].ts)
+- frontend routes are rewritten back to `index.html`
+- production API calls default to the same deployed origin at `/api`
+
+Recommended project setup on Vercel:
+
+1. Use the repo root as the project root directory.
+2. Let [vercel.json](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJECTS/crm%20dialer/vercel.json) control the build command and output directory.
+3. Leave `VITE_API_BASE_URL` empty unless the frontend should call a different API host.
+4. Set `DATA_MODE=supabase` so production never falls back to the local JSON store.
+
+Required Vercel environment variables:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `DATA_MODE=supabase`
+- `JWT_SECRET`
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Optional if inbuilt CRM softphone calling is enabled:
+
+- `VOICE_PROVIDER=embedded-sip`
+- `SIP_WEBSOCKET_URL`
+- `SIP_DOMAIN`
+- `SIP_USERNAME`
+- `SIP_PASSWORD`
+- `SIP_OUTBOUND_CALLER_ID`
+- `SIP_DIAL_PREFIX`
+
 ## Frontend env vars
 
-Defined in [client/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20dialer/client/.env.example).
+Defined in [client/.env.example](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJECTS/crm%20dialer/client/.env.example).
 
-- `VITE_API_BASE_URL`
+- `VITE_API_BASE_URL` optional, leave blank on Vercel for same-origin `/api`
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
 ## Backend env vars
 
-Defined in [server/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20dialer/server/.env.example).
+Defined in [server/.env.example](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJECTS/crm%20dialer/server/.env.example).
 
 - `PORT`
 - `DATA_MODE`
 - `JWT_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_API_KEY`
-- `TWILIO_API_SECRET`
-- `TWILIO_APP_SID`
-- `TWILIO_OUTBOUND_CALLER_ID`
+- `VOICE_PROVIDER`
+- `SIP_WEBSOCKET_URL`
+- `SIP_DOMAIN`
+- `SIP_USERNAME`
+- `SIP_PASSWORD`
+- `SIP_OUTBOUND_CALLER_ID`
+- `SIP_DIAL_PREFIX`
 - `AUTH_SEED_PASSWORD`
 
 ## Key routes
@@ -139,9 +179,9 @@ Defined in [server/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20diale
 - `PATCH /api/leads/:leadId/assign`
 - `PATCH /api/leads/:leadId/invalid`
 - `POST /api/leads/bulk-status`
+- `GET /api/dialer/session`
 - `GET /api/dialer/token`
 - `POST /api/dialer/disposition`
-- `POST /api/dialer/voice/outbound`
 - `GET /api/callbacks`
 - `PATCH /api/callbacks/:leadId/reschedule`
 - `PATCH /api/callbacks/:leadId/complete`
@@ -155,8 +195,8 @@ Defined in [server/.env.example](/C:/Users/Anushi%20Mittal/Downloads/crm%20diale
 
 Run the SQL files in order:
 
-1. [supabase/schema.sql](/C:/Users/Anushi%20Mittal/Downloads/crm%20dialer/supabase/schema.sql)
-2. [supabase/seed.sql](/C:/Users/Anushi%20Mittal/Downloads/crm%20dialer/supabase/seed.sql)
+1. [supabase/schema.sql](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJECTS/crm%20dialer/supabase/schema.sql)
+2. [supabase/seed.sql](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJECTS/crm%20dialer/supabase/seed.sql)
 
 Main tables:
 
@@ -183,15 +223,26 @@ Realtime:
 - Seeded local users are available at `admin@previewdialer.local`, `lead@previewdialer.local`, and `agent@previewdialer.local`
 - The seeded local password is whatever you set in `AUTH_SEED_PASSWORD`
 
-## Twilio integration notes
+## CRM softphone notes
 
-The dialer now supports a browser-calling path using Twilio Voice SDK when the backend has valid Twilio credentials.
+The dialer now exposes browser calling as an inbuilt CRM softphone using SIP/WebRTC.
 
-1. Point your TwiML App voice webhook to `POST /api/dialer/voice/outbound`
-2. Set `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY`, `TWILIO_API_SECRET`, `TWILIO_APP_SID`, and `TWILIO_OUTBOUND_CALLER_ID`
-3. The client will request a voice token from `GET /api/dialer/token` and register a browser device automatically when the agent starts a call
+How it works:
+- the CRM owns the softphone UI and browser calling lifecycle
+- the browser client uses SIP.js under the hood
+- any SIP/WebRTC-compatible backend can supply the actual credentials and routing
 
-If Twilio is not configured yet, the dialer falls back to manual call logging so agents can still work the queue and capture dispositions.
+To enable browser calling:
+
+1. Set `SIP_WEBSOCKET_URL`, `SIP_DOMAIN`, `SIP_USERNAME`, `SIP_PASSWORD`, and `SIP_OUTBOUND_CALLER_ID`.
+2. If your SIP dial plan needs a prefix for outbound PSTN routing, set `SIP_DIAL_PREFIX`.
+3. The client will request the browser session configuration from `GET /api/dialer/session` and register a SIP.js user agent automatically when the agent starts a call.
+
+Backward compatibility:
+- legacy `UNIFIED_VOICE_*` environment variables are still accepted by the backend as fallbacks
+- that means existing Unified Voice Vercel envs do not need an immediate rename
+
+If the SIP configuration is not ready yet, the dialer falls back to manual call logging so agents can still work the queue and capture dispositions.
 
 ## Current implementation notes
 
@@ -199,4 +250,5 @@ If Twilio is not configured yet, the dialer falls back to manual call logging so
 - Lead, call, callback, report, and user flows are loaded from backend APIs backed by Supabase tables.
 - The frontend also uses a Supabase client for realtime subscriptions so call and follow-up updates appear without a manual refresh.
 - CSV and Excel imports both feed the backend and can be used to build bulk calling queues quickly.
-- Twilio token generation and outbound TwiML routing are wired on the backend, with manual call logging available as a fallback.
+- Embedded SIP/WebRTC session configuration is wired on the backend, with manual call logging available as a fallback.
+- On Vercel, the frontend defaults to same-origin `/api` calls and production defaults to `DATA_MODE=supabase` when `VERCEL` is present.

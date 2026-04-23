@@ -1,4 +1,21 @@
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
+function resolveApiBaseUrl() {
+  const explicitBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (explicitBaseUrl) {
+    return explicitBaseUrl.replace(/\/+$/, "");
+  }
+
+  if (import.meta.env.DEV) {
+    return "http://localhost:4000/api";
+  }
+
+  if (typeof window !== "undefined") {
+    return `${window.location.origin.replace(/\/+$/, "")}/api`;
+  }
+
+  return "/api";
+}
+
+const apiBaseUrl = resolveApiBaseUrl();
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 export function buildApiUrl(path: string) {

@@ -6,22 +6,53 @@
 
 :root {
   color-scheme: light;
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
 }
 
 .dark:root {
   color-scheme: dark;
 }
 
+@layer base {
+  * {
+    @apply border-slate-200;
+  }
+
+  html {
+    @apply bg-[#dde7f1];
+  }
+
+  body {
+    @apply min-h-screen bg-[#dde7f1] font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-white;
+    background-image:
+      radial-gradient(circle at top left, rgba(27, 84, 146, 0.12), transparent 28%),
+      linear-gradient(180deg, #e8eef5 0%, #dde7f1 52%, #d6e0ea 100%);
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 24%),
+      linear-gradient(180deg, rgba(2, 6, 23, 1), rgba(15, 23, 42, 1));
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+
+  input,
+  select,
+  textarea {
+    @apply text-slate-900 dark:text-white;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-slate-400 dark:text-slate-500;
+  }
+}
+
 body {
-  @apply min-h-screen bg-[#c7d3db] font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-white;
-  background-image: linear-gradient(180deg, rgba(214, 223, 230, 1), rgba(199, 211, 219, 1));
-}
-
-.dark body {
-  background-image: linear-gradient(180deg, rgba(2, 6, 23, 1), rgba(15, 23, 42, 1));
-}
-
-#root {
   @apply min-h-screen;
 }
 
@@ -35,11 +66,51 @@ body {
 }
 
 .panel-glass {
-  @apply border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-900;
+  @apply border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-900;
 }
 
 .app-grid {
   background-size: 48px 48px;
+}
+
+.crm-shell {
+  @apply border border-slate-200 bg-[#f4f8fc] shadow-[0_28px_80px_rgba(15,23,42,0.12)] dark:border-slate-800 dark:bg-slate-950;
+}
+
+.crm-card {
+  @apply rounded-[18px] border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-900;
+}
+
+.crm-subtle-card {
+  @apply rounded-[16px] border border-slate-200 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-900/70;
+}
+
+.crm-section-label {
+  @apply text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400;
+}
+
+.crm-input {
+  @apply w-full rounded-[12px] border border-slate-200 bg-white px-4 py-2.5 text-[13px] outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:border-sky-400 dark:focus:ring-sky-950/60;
+}
+
+.crm-table {
+  @apply min-w-full text-left text-sm;
+}
+
+.crm-table thead {
+  @apply bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400;
+}
+
+.crm-table th {
+  @apply px-4 py-3 font-medium;
+}
+
+.crm-table td {
+  @apply px-4 py-4 align-top;
+}
+
+.crm-table tbody tr {
+  @apply border-t border-slate-200/80 dark:border-slate-800;
 }
 
 ::selection {

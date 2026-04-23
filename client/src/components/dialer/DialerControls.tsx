@@ -10,7 +10,7 @@ import { Card } from "../shared/Card";
 interface DialerControlsProps {
   lead: Lead;
   activeCall: ActiveCall | null;
-  twilioReady: boolean;
+  browserCallingReady: boolean;
   autoDialEnabled: boolean;
   autoDialDelaySeconds: number;
   autoDialCountdown: number | null;
@@ -26,7 +26,7 @@ interface DialerControlsProps {
 export function DialerControls({
   lead,
   activeCall,
-  twilioReady,
+  browserCallingReady,
   autoDialEnabled,
   autoDialDelaySeconds,
   autoDialCountdown,
@@ -75,7 +75,7 @@ export function DialerControls({
               Timer {formatDuration(elapsed)}
             </Badge>
             <Badge className="bg-slate-100 px-2 py-1 text-[10px] text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              {twilioReady ? "Browser calling" : "Manual mode"}
+              {browserCallingReady ? "CRM softphone" : "Manual mode"}
             </Badge>
           </div>
         </div>

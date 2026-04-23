@@ -1,5 +1,6 @@
 import { Badge } from "../components/shared/Badge";
 import { Card } from "../components/shared/Card";
+import { MetricCard } from "../components/shared/MetricCard";
 import { PageHeader } from "../components/shared/PageHeader";
 import { BreakdownDonutChart } from "../components/charts/BreakdownDonutChart";
 import { PerformanceChart } from "../components/charts/PerformanceChart";
@@ -24,37 +25,17 @@ export function ReportsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Total team calls</p>
-          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
-            {metrics.totalTeamCalls}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Connected calls</p>
-          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
-            {metrics.connectedCalls}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Callback completion</p>
-          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
-            {metrics.callbackCompletionRate}%
-          </p>
-        </Card>
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Average duration</p>
-          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
-            {formatDuration(metrics.averageCallDuration)}
-          </p>
-        </Card>
+        <MetricCard label="Total team calls" value={metrics.totalTeamCalls} />
+        <MetricCard label="Connected calls" value={metrics.connectedCalls} />
+        <MetricCard label="Callback completion" value={`${metrics.callbackCompletionRate}%`} />
+        <MetricCard label="Average duration" value={formatDuration(metrics.averageCallDuration)} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.25fr_0.95fr]">
-        <Card>
+        <Card className="p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              <p className="crm-section-label">
                 Daily Productivity
               </p>
               <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
@@ -70,8 +51,8 @@ export function ReportsPage() {
           </div>
         </Card>
 
-        <Card>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <Card className="p-5">
+          <p className="crm-section-label">
             Disposition Breakdown
           </p>
           <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
@@ -84,15 +65,15 @@ export function ReportsPage() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <Card className="p-5">
+          <p className="crm-section-label">
             Lead Status Distribution
           </p>
           <div className="mt-5 space-y-3">
             {analytics.statusData.map((item) => (
               <div
                 key={item.label}
-                className="flex items-center justify-between rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900"
+                className="crm-subtle-card flex items-center justify-between px-4 py-4"
               >
                 <p className="text-[12px] font-medium capitalize text-slate-700 dark:text-slate-200">
                   {item.label.replace("_", " ")}
@@ -105,8 +86,8 @@ export function ReportsPage() {
           </div>
         </Card>
 
-        <Card>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <Card className="p-5">
+          <p className="crm-section-label">
             Pipeline Overview
           </p>
           <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
@@ -118,16 +99,16 @@ export function ReportsPage() {
         </Card>
       </div>
 
-      <Card>
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+      <Card className="p-5">
+        <p className="crm-section-label">
           Agent-wise performance
         </p>
         <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
           Top performing agents
         </h3>
         <div className="mt-5 overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+          <table className="crm-table">
+            <thead>
               <tr>
                 <th className="px-4 py-3">Agent</th>
                 <th className="px-4 py-3">Calls</th>
@@ -160,8 +141,8 @@ export function ReportsPage() {
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <Card className="p-5">
+          <p className="crm-section-label">
             Pipeline Risks
           </p>
           <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
@@ -171,7 +152,7 @@ export function ReportsPage() {
             {analytics.riskMetrics.map((risk) => (
               <div
                 key={risk.id}
-                className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900"
+                className="crm-subtle-card px-4 py-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -191,8 +172,8 @@ export function ReportsPage() {
           </div>
         </Card>
 
-        <Card>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+        <Card className="p-5">
+          <p className="crm-section-label">
             Duplicate Watch
           </p>
           <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
@@ -203,7 +184,7 @@ export function ReportsPage() {
               analytics.duplicateInsights.map((group) => (
                 <div
                   key={group.id}
-                  className="rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900"
+                className="crm-subtle-card px-4 py-3"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-[12px] font-medium text-slate-900 dark:text-white">

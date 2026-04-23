@@ -5,11 +5,27 @@ import type { LeadImportRecord, LeadPriority, LeadStatus } from "../types";
 const defaultStatus: LeadStatus = "new";
 const defaultPriority: LeadPriority = "Medium";
 
-const fieldMap: Record<string, keyof LeadImportRecord> = {
+type ParsedField =
+  | keyof LeadImportRecord
+  | "firstName"
+  | "lastName"
+  | "address"
+  | "city"
+  | "state"
+  | "zipCode"
+  | "age"
+  | "importDate";
+
+const fieldMap: Record<string, ParsedField> = {
   full_name: "fullName",
   fullname: "fullName",
   name: "fullName",
+  first_name: "firstName",
+  firstname: "firstName",
+  last_name: "lastName",
+  lastname: "lastName",
   phone: "phone",
+  phone_number: "phone",
   alt_phone: "altPhone",
   alternate_number: "altPhone",
   altphone: "altPhone",
@@ -18,6 +34,13 @@ const fieldMap: Record<string, keyof LeadImportRecord> = {
   company_name: "company",
   job_title: "jobTitle",
   title: "jobTitle",
+  address: "address",
+  city: "city",
+  state: "state",
+  zip: "zipCode",
+  zipcode: "zipCode",
+  zip_code: "zipCode",
+  postal_code: "zipCode",
   location: "location",
   source: "source",
   lead_source: "source",
@@ -26,6 +49,11 @@ const fieldMap: Record<string, keyof LeadImportRecord> = {
   service: "interest",
   status: "status",
   notes: "notes",
+  age: "age",
+  import_date: "importDate",
+  created_at: "importDate",
+  __empty: "source",
+  __empty_1: "importDate",
   last_contacted: "lastContacted",
   assigned_agent: "assignedAgentName",
   assigned_agent_name: "assignedAgentName",
@@ -124,12 +152,71 @@ function createEmptyRow(): LeadImportRecord {
   };
 }
 
+function normalizeCellValue(rawValue: unknown) {
+  if (rawValue == null) {
+    return "";
+  }
+
+  if (typeof rawValue === "number") {
+    return Number.isInteger(rawValue) ? String(rawValue) : String(rawValue).trim();
+  }
+
+  return String(rawValue).trim();
+}
+
+function excelSerialToIsoString(serial: number) {
+  const epoch = Date.UTC(1899, 11, 30);
+  return new Date(epoch + serial * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function parseIsoDate(rawValue: unknown) {
+  if (rawValue == null || rawValue === "") {
+    return null;
+  }
+
+  if (typeof rawValue === "number" && Number.isFinite(rawValue) && rawValue > 20000) {
+    return excelSerialToIsoString(rawValue);
+  }
+
+  const value = normalizeCellValue(rawValue);
+  if (/^\d{5,}$/.test(value)) {
+    const serial = Number(value);
+    if (Number.isFinite(serial) && serial > 20000) {
+      return excelSerialToIsoString(serial);
+    }
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function compactJoin(parts: Array<string | null | undefined>, separator: string) {
+  return parts.map((part) => part?.trim() ?? "").filter(Boolean).join(separator);
+}
+
+function buildNotes(baseNotes: string, extras: string[]) {
+  return [baseNotes.trim(), ...extras.filter(Boolean)]
+    .filter(Boolean)
+    .join(baseNotes.trim() ? "\n" : "\n")
+    .trim();
+}
+
 function parseMappedRows(rawRows: Array<Record<string, unknown>>) {
   let invalidRows = 0;
   const rows: LeadImportRecord[] = [];
 
   rawRows.forEach((rawRow) => {
     const row = createEmptyRow();
+    const scratch = {
+      firstName: "",
+      lastName: "",
+      address: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      age: "",
+      importDate: "",
+    };
 
     Object.entries(rawRow).forEach(([header, rawValue]) => {
       const mappedField = fieldMap[normalize(header)];
@@ -137,7 +224,8 @@ function parseMappedRows(rawRows: Array<Record<string, unknown>>) {
         return;
       }
 
-      const value = String(rawValue ?? "").trim();
+      const value = normalizeCellValue(rawValue);
+
       if (mappedField === "status") {
         row.status = parseStatus(value);
         return;
@@ -149,17 +237,49 @@ function parseMappedRows(rawRows: Array<Record<string, unknown>>) {
       }
 
       if (mappedField === "lastContacted") {
-        row.lastContacted = value ? new Date(value).toISOString() : null;
+        row.lastContacted = parseIsoDate(rawValue);
         return;
       }
 
       if (mappedField === "callbackTime") {
-        row.callbackTime = value ? new Date(value).toISOString() : null;
+        row.callbackTime = parseIsoDate(rawValue);
         return;
       }
 
-      row[mappedField] = value as never;
+      if (mappedField in scratch) {
+        scratch[mappedField as keyof typeof scratch] = value;
+        return;
+      }
+
+      row[mappedField as keyof LeadImportRecord] = value as never;
     });
+
+    if (!row.fullName) {
+      row.fullName = compactJoin([scratch.firstName, scratch.lastName], " ");
+    }
+
+    if (!row.location) {
+      row.location = compactJoin(
+        [
+          scratch.address,
+          compactJoin(
+            [
+              scratch.city,
+              compactJoin([scratch.state, scratch.zipCode], " "),
+            ],
+            ", ",
+          ),
+        ],
+        ", ",
+      );
+    }
+
+    row.notes = buildNotes(row.notes, [
+      scratch.age ? `Age: ${scratch.age}` : "",
+      parseIsoDate(scratch.importDate)?.slice(0, 10)
+        ? `Import Date: ${parseIsoDate(scratch.importDate)?.slice(0, 10)}`
+        : "",
+    ]);
 
     if (!row.fullName || !row.phone) {
       invalidRows += 1;

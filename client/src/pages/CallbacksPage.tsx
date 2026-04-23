@@ -13,6 +13,7 @@ import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { EmptyState } from "../components/shared/EmptyState";
+import { MetricCard } from "../components/shared/MetricCard";
 import { PageHeader } from "../components/shared/PageHeader";
 import { useAppState } from "../hooks/useAppState";
 import { getCallbackBuckets } from "../lib/analytics";
@@ -169,11 +170,9 @@ export function CallbacksPage() {
   };
 
   const renderList = (title: string, description: string, items: typeof allCallbacks) => (
-    <Card className="space-y-5">
+    <Card className="space-y-5 p-5">
       <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          {title}
-        </p>
+        <p className="crm-section-label">{title}</p>
         <h3 className="mt-2 text-[18px] font-semibold text-slate-900 dark:text-white">
           {description}
         </h3>
@@ -214,7 +213,7 @@ export function CallbacksPage() {
                   </p>
                 </div>
 
-                <div className="grid gap-3 rounded-[8px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950 xl:min-w-[360px]">
+                <div className="grid gap-3 rounded-[16px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950 xl:min-w-[360px]">
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       { label: "+1h", value: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
@@ -234,7 +233,7 @@ export function CallbacksPage() {
                             [lead.id]: toDatetimeLocalInput(item.value),
                           }))
                         }
-                        className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                        className="rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
                       >
                         {item.label}
                       </button>
@@ -249,7 +248,7 @@ export function CallbacksPage() {
                         [lead.id]: event.target.value,
                       }))
                     }
-                    className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                    className="crm-input"
                   />
                   <select
                     value={priorityMap[lead.id] ?? lead.priority}
@@ -259,7 +258,7 @@ export function CallbacksPage() {
                         [lead.id]: event.target.value as LeadPriority,
                       }))
                     }
-                    className="rounded-md border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                    className="crm-input"
                   >
                     {priorities.map((priority) => (
                       <option key={priority} value={priority}>
@@ -383,24 +382,9 @@ export function CallbacksPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Today's follow-ups</p>
-          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
-            {analytics.callbackCounts.today}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Overdue follow-ups</p>
-          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
-            {analytics.callbackCounts.overdue}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Upcoming follow-ups</p>
-          <p className="mt-3 text-[30px] font-semibold text-slate-900 dark:text-white">
-            {analytics.callbackCounts.upcoming}
-          </p>
-        </Card>
+        <MetricCard label="Today's follow-ups" value={analytics.callbackCounts.today} icon={CalendarClock} />
+        <MetricCard label="Overdue follow-ups" value={analytics.callbackCounts.overdue} icon={BellRing} />
+        <MetricCard label="Upcoming follow-ups" value={analytics.callbackCounts.upcoming} icon={CheckCircle2} />
       </div>
 
       {viewMode === "list" ? (
@@ -422,12 +406,10 @@ export function CallbacksPage() {
           />
         )
       ) : (
-        <Card className="space-y-5">
+        <Card className="space-y-5 p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                Calendar
-              </p>
+              <p className="crm-section-label">Calendar</p>
               <h3 className="mt-2 text-[18px] font-semibold text-slate-900 dark:text-white">
                 {calendar.label}
               </h3>

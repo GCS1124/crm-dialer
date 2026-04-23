@@ -277,18 +277,30 @@ export interface WorkspaceAnalytics {
   duplicateInsights: DuplicateInsight[];
 }
 
+export type VoiceProviderName = "embedded-sip";
+
+export interface VoiceProviderConfig {
+  provider: VoiceProviderName;
+  available: boolean;
+  callerId: string | null;
+  websocketUrl: string | null;
+  sipDomain: string | null;
+  username: string | null;
+}
+
 export interface WorkspaceSettingsStatus {
   authMode: "supabase" | "local";
   signupEnabled: boolean;
   importFormats: string[];
-  twilio: {
+  voice: {
+    provider: VoiceProviderName;
     available: boolean;
     callerId: string | null;
     configuredFields: {
-      accountSid: boolean;
-      apiKey: boolean;
-      apiSecret: boolean;
-      appSid: boolean;
+      websocketUrl: boolean;
+      sipDomain: boolean;
+      sipUsername: boolean;
+      sipPassword: boolean;
       callerId: boolean;
     };
   };
@@ -307,11 +319,7 @@ export interface WorkspacePayload {
   leads: ApiLead[];
   analytics: WorkspaceAnalytics;
   settings: WorkspaceSettingsStatus;
-  twilio: {
-    available: boolean;
-    callerId: string | null;
-    appSid: string | null;
-  };
+  voice: VoiceProviderConfig;
 }
 
 export interface CreateUserInput {

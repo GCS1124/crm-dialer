@@ -50,6 +50,7 @@ import {
 import type { LeadPriority, QueueFilter } from "../types";
 
 type WorkspaceTab = "about" | "notes" | "history" | "timeline";
+const dialPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
 
 function formatRelativeTime(value?: string | null) {
   if (!value) {
@@ -97,6 +98,10 @@ function buildQuickCallbackInput(hoursFromNow: number, hour?: number, minute = 0
   }
 
   return toDatetimeLocalInput(value.toISOString());
+}
+
+function sanitizeDialPadInput(value: string) {
+  return value.replace(/[^\d+*#]/g, "");
 }
 
 function getLeadProductivityHint(lead: {
@@ -210,6 +215,9 @@ export function PreviewDialerPage() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("about");
   const [heroTimer, setHeroTimer] = useState(0);
   const [queueSearch, setQueueSearch] = useState("");
+  const [dialPadOpen, setDialPadOpen] = useState(false);
+  const [dialPadValue, setDialPadValue] = useState("");
+  const [dialPadMessage, setDialPadMessage] = useState("");
 
   if (!currentUser) {
     return null;
@@ -247,6 +255,15 @@ export function PreviewDialerPage() {
       ? { title: recommendedLead.reason, detail: recommendedLead.suggestedAction }
       : getLeadProductivityHint(activeLead)
     : null;
+  const activeCallLead = activeCall?.leadId
+    ? leads.find((lead) => lead.id === activeCall.leadId) ?? null
+    : null;
+  const headerName = activeCallLead?.fullName || activeCall?.displayName || activeLead?.fullName || "--";
+  const headerPhone = activeCallLead?.phone || activeCall?.dialedNumber || activeLead?.phone || "--";
+  const headerInitials = getInitials(headerName);
+  const quickFillNumbers = [activeLead?.phone || "", activeLead?.altPhone || ""]
+    .map((value) => sanitizeDialPadInput(value))
+    .filter((value, index, items) => Boolean(value) && items.indexOf(value) === index);
 
   useEffect(() => {
     if (!activeCall) {
@@ -287,6 +304,51 @@ export function PreviewDialerPage() {
     } finally {
       setUploading(false);
       event.target.value = "";
+    }
+  };
+
+  const handleDialPadToggle = () => {
+    if (!dialPadOpen && !dialPadValue) {
+      setDialPadValue(sanitizeDialPadInput(activeLead?.phone || activeLead?.altPhone || ""));
+    }
+
+    setDialPadMessage("");
+    setAutoDialEnabled(false);
+    setDialPadOpen((open) => !open);
+  };
+
+  const handleDialPadInputChange = (value: string) => {
+    setDialPadMessage("");
+    setDialPadValue(sanitizeDialPadInput(value));
+  };
+
+  const handleDialPadAppend = (value: string) => {
+    handleDialPadInputChange(`${dialPadValue}${value}`);
+  };
+
+  const handleDialPadBackspace = () => {
+    handleDialPadInputChange(dialPadValue.slice(0, -1));
+  };
+
+  const handleDialPadCall = async () => {
+    const number = sanitizeDialPadInput(dialPadValue);
+    if (!number || activeCall) {
+      return;
+    }
+
+    setDialPadMessage("");
+    try {
+      await startCall({
+        phone: number,
+        leadId: null,
+        displayName: number,
+      });
+      setDialPadValue(number);
+      setDialPadOpen(false);
+    } catch (error) {
+      setDialPadMessage(
+        error instanceof Error ? error.message : "Unable to start that call.",
+      );
     }
   };
 
@@ -414,13 +476,13 @@ export function PreviewDialerPage() {
   const noteSpotlight = noteEntries[0];
 
   return (
-    <div className="space-y-3 text-sm">
-      <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-[#edf2fa] shadow-panel dark:border-slate-800 dark:bg-slate-950">
+    <div className="space-y-4 text-sm">
+      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-[#eef4fb] shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="inline-flex items-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             >
               <span className={cn("h-2.5 w-2.5 rounded-full", statusTone)} />
               {currentUser.status === "online"
@@ -432,7 +494,9 @@ export function PreviewDialerPage() {
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              onClick={handleDialPadToggle}
+              aria-pressed={dialPadOpen}
+              className="inline-flex items-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             >
               <Grid2x2 size={14} />
               Dial Pad
@@ -456,7 +520,7 @@ export function PreviewDialerPage() {
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              className="inline-flex items-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             >
               Calls
               <ChevronDown size={14} />
@@ -476,6 +540,133 @@ export function PreviewDialerPage() {
         {callbackMessage ? (
           <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-300">
             {callbackMessage}
+          </div>
+        ) : null}
+
+        {dialPadOpen ? (
+          <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/40">
+            <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+              <div className="space-y-3 rounded-[18px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+                      Manual dial
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Type or tap a number, then start the call.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDialPadOpen(false)}
+                    className="rounded-[12px] border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    Close
+                  </button>
+                </div>
+                <input
+                  value={dialPadValue}
+                  onChange={(event) => handleDialPadInputChange(event.target.value)}
+                  placeholder="Enter number"
+                  className="crm-input text-[13px] tracking-[0.18em]"
+                />
+                <div className="grid grid-cols-3 gap-2">
+                  {dialPadKeys.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleDialPadAppend(key)}
+                      className="rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-[14px] font-semibold text-slate-800 transition hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    >
+                      {key}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleDialPadBackspace}
+                    disabled={!dialPadValue}
+                  >
+                    Backspace
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleDialPadInputChange("")}
+                    disabled={!dialPadValue}
+                  >
+                    Clear
+                  </Button>
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={() => void handleDialPadCall()}
+                  disabled={!dialPadValue || Boolean(activeCall)}
+                >
+                  <PhoneCall size={14} />
+                  {activeCall ? "Call in progress" : "Call number"}
+                </Button>
+                {dialPadMessage ? (
+                  <p className="text-[12px] text-rose-600 dark:text-rose-300">{dialPadMessage}</p>
+                ) : null}
+              </div>
+
+              <div className="space-y-3 rounded-[18px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+                      Quick fill
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Pull numbers from the current record or paste a new one.
+                    </p>
+                  </div>
+                  <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {activeLead.fullName}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {quickFillNumbers.length ? (
+                    quickFillNumbers.map((value, index) => (
+                      <button
+                        key={`${value}-${index}`}
+                        type="button"
+                        onClick={() => handleDialPadInputChange(value)}
+                        className="rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 transition hover:border-sky-400 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                      >
+                        {formatPhone(value)}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="text-[12px] text-slate-500 dark:text-slate-400">
+                      No numbers on this lead.
+                    </span>
+                  )}
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {[
+                    { label: "Primary", value: activeLead.phone || "--" },
+                    { label: "Alternate", value: activeLead.altPhone || "--" },
+                    {
+                      label: "Selected lead",
+                      value: activeLead.company || activeLead.fullName,
+                    },
+                  ].map((item) => (
+                    <div key={item.label} className="crm-subtle-card px-3 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                        {item.label}
+                      </p>
+                      <p className="mt-1 text-[13px] font-medium text-slate-900 dark:text-white">
+                        {item.label === "Selected lead" ? item.value : formatPhone(item.value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         ) : null}
 
@@ -526,7 +717,7 @@ export function PreviewDialerPage() {
                     value={queueSearch}
                     onChange={(event) => setQueueSearch(event.target.value)}
                     placeholder="Search queue"
-                    className="w-full rounded-md border border-slate-200 bg-white py-2 pl-9 pr-3 text-[12px] outline-none focus:border-surface-600 dark:border-slate-700 dark:bg-slate-950"
+                    className="crm-input py-2 pl-9 text-[12px]"
                   />
                 </label>
                 <select
@@ -534,7 +725,7 @@ export function PreviewDialerPage() {
                   onChange={(event) =>
                     setQueueSort(event.target.value as "priority" | "newest" | "callback_due")
                   }
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[12px] outline-none focus:border-surface-600 dark:border-slate-700 dark:bg-slate-950"
+                  className="crm-input py-2 text-[12px]"
                 >
                   <option value="priority">Priority</option>
                   <option value="newest">Newest</option>
@@ -543,7 +734,7 @@ export function PreviewDialerPage() {
                 <select
                   value={queueFilter}
                   onChange={(event) => setQueueFilter(event.target.value as QueueFilter)}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[12px] outline-none focus:border-surface-600 dark:border-slate-700 dark:bg-slate-950"
+                  className="crm-input py-2 text-[12px]"
                 >
                   <option value="all">All active</option>
                   <option value="new">New</option>
@@ -553,7 +744,7 @@ export function PreviewDialerPage() {
                   <option value="qualified">Qualified</option>
                   <option value="appointment_booked">Appointment booked</option>
                 </select>
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
                   <FileUp size={14} />
                   {uploading ? "Importing..." : "Import file"}
                   <input
@@ -648,7 +839,7 @@ export function PreviewDialerPage() {
                 </Button>
               </div>
 
-              <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
+              <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     Auto dial
@@ -746,15 +937,15 @@ export function PreviewDialerPage() {
             <div className="rounded-none border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#ff8f7b] text-[12px] font-semibold text-white">
-                  {getInitials(activeLead.fullName)}
-                </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#ff8f7b] text-[12px] font-semibold text-white">
+                    {headerInitials}
+                  </div>
                   <div className="min-w-0">
                     <p className="truncate text-[14px] font-semibold text-slate-900 dark:text-white">
-                      {activeLead.fullName}
+                      {headerName}
                     </p>
                     <p className="truncate text-[12px] text-slate-500 dark:text-slate-400">
-                      {formatPhone(activeLead.phone)}
+                      {formatPhone(headerPhone)}
                     </p>
                   </div>
                 </div>

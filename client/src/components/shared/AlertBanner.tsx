@@ -33,7 +33,7 @@ export function AlertBanner({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-[8px] border px-4 py-3 text-sm md:flex-row md:items-start md:justify-between",
+        "flex flex-col gap-3 rounded-[16px] border px-4 py-3 text-sm md:flex-row md:items-start md:justify-between",
         toneClasses[tone],
         className,
       )}

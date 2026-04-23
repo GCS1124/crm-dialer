@@ -4,7 +4,7 @@ import { env } from "../config/env.js";
 import { supabaseAdmin } from "./supabaseAdmin.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { buildAiAssist } from "./aiAssistService.js";
-import { getTwilioFieldStatus, getTwilioVoiceConfig } from "./twilioService.js";
+import { getVoiceFieldStatus, getVoiceProviderConfig } from "./voiceProviderService.js";
 import type {
   ApiCallActivityType,
   ApiCallDisposition,
@@ -253,7 +253,7 @@ function isConfiguredSupabaseKey(value: string, placeholders: string[]) {
 }
 
 function buildSettingsStatus() {
-  const twilio = getTwilioVoiceConfig();
+  const voice = getVoiceProviderConfig();
   const publishableKeyConfigured = isConfiguredSupabaseKey(env.SUPABASE_PUBLISHABLE_KEY, [
     "publishable-key",
     "anon-key",
@@ -270,10 +270,11 @@ function buildSettingsStatus() {
     authMode: "supabase" as const,
     signupEnabled: true,
     importFormats: ["csv", "xlsx", "xls"],
-    twilio: {
-      available: twilio.available,
-      callerId: twilio.available ? twilio.callerId : null,
-      configuredFields: getTwilioFieldStatus(),
+    voice: {
+      provider: voice.provider,
+      available: voice.available,
+      callerId: voice.available ? voice.callerId : null,
+      configuredFields: getVoiceFieldStatus(),
     },
     supabase: {
       connected,
@@ -692,7 +693,7 @@ export async function syncAuthUserLink(email: string, authUserId: string) {
 
 export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePayload> {
   const { users, leads } = await buildLeadPayload(currentUser);
-  const twilio = getTwilioVoiceConfig();
+  const voice = getVoiceProviderConfig();
 
   return {
     user: currentUser,
@@ -700,11 +701,7 @@ export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePaylo
     leads,
     analytics: buildWorkspaceAnalytics(leads, users, currentUser),
     settings: buildSettingsStatus(),
-    twilio: {
-      available: twilio.available,
-      callerId: twilio.available ? twilio.callerId : null,
-      appSid: twilio.available ? twilio.appSid : null,
-    },
+    voice,
   };
 }
 

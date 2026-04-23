@@ -7,6 +7,7 @@ import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { EmptyState } from "../components/shared/EmptyState";
+import { MetricCard } from "../components/shared/MetricCard";
 import { PageHeader } from "../components/shared/PageHeader";
 import { useAppState } from "../hooks/useAppState";
 import { parseLeadFile } from "../lib/csv";
@@ -209,29 +210,23 @@ export function LeadManagementPage() {
             }
             className="text-left"
           >
-            <Card className="h-full p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                    {metric.label}
-                  </p>
-                  <p className="mt-2 text-[24px] font-semibold text-slate-900 dark:text-white">
-                    {metric.value}
-                  </p>
-                  <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                    {metric.hint}
-                  </p>
-                </div>
-                <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-medium ${getInsightTone(metric.tone)}`}>
+            <MetricCard
+              label={metric.label}
+              value={metric.value}
+              hint={metric.hint}
+              className="h-full p-4 text-left"
+              valueClassName="mt-3 text-[26px]"
+              action={
+                <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-medium ${getInsightTone(metric.tone)}`}>
                   View
                 </span>
-              </div>
-            </Card>
+              }
+            />
           </button>
         ))}
       </div>
 
-      <Card className="space-y-4">
+      <Card className="space-y-4 p-4">
         <div className="flex flex-wrap gap-2">
           {[
             ["all", "All"],
@@ -265,13 +260,13 @@ export function LeadManagementPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search name, company, or email"
-              className="w-full rounded-md border border-slate-200 bg-white py-3 pl-11 pr-4 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+              className="crm-input py-3 pl-11"
             />
           </label>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as "all" | LeadStatus)}
-            className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+            className="crm-input"
           >
             <option value="all">All statuses</option>
             {bulkStatuses.map((status) => (
@@ -283,7 +278,7 @@ export function LeadManagementPage() {
           <select
             value={tagFilter}
             onChange={(event) => setTagFilter(event.target.value)}
-            className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+            className="crm-input"
           >
             <option value="all">All tags</option>
             {Array.from(new Set(leads.flatMap((lead) => lead.tags))).map((tag) => (
@@ -295,7 +290,7 @@ export function LeadManagementPage() {
           <select
             value={bulkStatus}
             onChange={(event) => setBulkStatus(event.target.value as LeadStatus)}
-            className="rounded-md border border-slate-200 bg-white px-4 py-3 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+            className="crm-input"
           >
             {bulkStatuses.map((status) => (
               <option key={status} value={status}>
@@ -337,8 +332,8 @@ export function LeadManagementPage() {
       {filteredLeads.length ? (
         <Card className="overflow-hidden p-0">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+            <table className="crm-table">
+            <thead>
               <tr>
                 <th className="px-4 py-4">
                   <input

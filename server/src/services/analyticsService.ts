@@ -363,7 +363,7 @@ export function getFocusMetrics(leads: ApiLead[]): FocusMetric[] {
   return [
     {
       id: "due_today",
-      label: "Due today",
+      label: "Callbacks due today",
       value: leads.filter(
         (lead) => lead.callbackTime && isToday(lead.callbackTime) && !isPast(lead.callbackTime),
       ).length,
@@ -372,7 +372,7 @@ export function getFocusMetrics(leads: ApiLead[]): FocusMetric[] {
     },
     {
       id: "overdue_callbacks",
-      label: "Overdue",
+      label: "Callbacks overdue",
       value: leads.filter((lead) => lead.callbackTime && isPast(lead.callbackTime)).length,
       hint: "Callbacks that slipped past their scheduled time",
       tone: "rose",

@@ -14,6 +14,7 @@ import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { EmptyState } from "../components/shared/EmptyState";
+import { MetricCard } from "../components/shared/MetricCard";
 import { PageHeader } from "../components/shared/PageHeader";
 import { useAppState } from "../hooks/useAppState";
 import {
@@ -194,33 +195,13 @@ export function CallsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Today</p>
-          <p className="mt-3 text-[28px] font-semibold text-slate-900 dark:text-white">
-            {todayCalls}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">This week</p>
-          <p className="mt-3 text-[28px] font-semibold text-slate-900 dark:text-white">
-            {weekCalls}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">This month</p>
-          <p className="mt-3 text-[28px] font-semibold text-slate-900 dark:text-white">
-            {monthCalls}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">Average duration</p>
-          <p className="mt-3 text-[28px] font-semibold text-slate-900 dark:text-white">
-            {formatDuration(averageDuration)}
-          </p>
-        </Card>
+        <MetricCard label="Today" value={todayCalls} icon={PhoneCall} />
+        <MetricCard label="This week" value={weekCalls} icon={Search} />
+        <MetricCard label="This month" value={monthCalls} icon={Plus} />
+        <MetricCard label="Average duration" value={formatDuration(averageDuration)} icon={Sparkles} />
       </div>
 
-      <Card className="space-y-4">
+      <Card className="space-y-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
           {[
             ["all", "All calls"],
@@ -249,7 +230,7 @@ export function CallsPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search calls by contact, phone, notes, or summary"
-            className="w-full rounded-md border border-slate-200 bg-white py-3 pl-11 pr-4 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+            className="crm-input py-3 pl-11"
           />
         </label>
       </Card>
@@ -306,7 +287,7 @@ export function CallsPage() {
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-[0.95fr_1.05fr]">
-                  <div className="rounded-[8px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
                       <Sparkles size={13} />
                       AI assist
@@ -318,7 +299,7 @@ export function CallsPage() {
                       {call.suggestedNextAction}
                     </p>
                   </div>
-                  <div className="rounded-[8px] border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+                  <div className="crm-subtle-card p-3">
                     <div className="grid gap-2 text-[12px] text-slate-600 dark:text-slate-300">
                       <p>
                         <span className="font-medium text-slate-900 dark:text-white">Duration:</span>{" "}
@@ -380,7 +361,7 @@ export function CallsPage() {
       <button
         type="button"
         onClick={openCreate}
-        className="fixed bottom-6 right-6 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#3b91c3] text-white shadow-[0_16px_34px_rgba(59,145,195,0.35)] transition hover:bg-[#327eab]"
+        className="fixed bottom-6 right-6 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#1f7db3] text-white shadow-[0_16px_34px_rgba(31,125,179,0.35)] transition hover:bg-[#186791]"
         aria-label="Quick add call"
       >
         <Plus size={22} />
@@ -388,7 +369,7 @@ export function CallsPage() {
 
       {editorOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-[880px] rounded-[12px] border border-slate-200 bg-[#eef4fb] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-slate-950">
+          <div className="w-full max-w-[880px] rounded-[24px] border border-slate-200 bg-[#eef4fb] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-slate-950">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">

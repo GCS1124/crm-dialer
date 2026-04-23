@@ -11,6 +11,7 @@
     "build": "npm run build --workspace client && npm run build --workspace server",
     "build:client": "npm run build --workspace client",
     "build:server": "npm run build --workspace server",
+    "vercel-build": "npm run build:client",
     "lint": "npm run lint --workspace client && npm run lint --workspace server"
   },
   "devDependencies": {

@@ -131,7 +131,9 @@ export interface Lead {
 }
 
 export interface ActiveCall {
-  leadId: string;
+  leadId: string | null;
+  dialedNumber: string;
+  displayName: string;
   startedAt: number;
   status: CallControlStatus;
   muted: boolean;
@@ -295,24 +297,30 @@ export interface WorkspaceAnalytics {
   duplicateInsights: DuplicateInsight[];
 }
 
-export interface TwilioDialerConfig {
+export type VoiceProviderName = "embedded-sip";
+
+export interface VoiceProviderConfig {
+  provider: VoiceProviderName;
   available: boolean;
   callerId: string | null;
-  appSid: string | null;
+  websocketUrl: string | null;
+  sipDomain: string | null;
+  username: string | null;
 }
 
 export interface WorkspaceSettingsStatus {
   authMode: "supabase" | "local";
   signupEnabled: boolean;
   importFormats: string[];
-  twilio: {
+  voice: {
+    provider: VoiceProviderName;
     available: boolean;
     callerId: string | null;
     configuredFields: {
-      accountSid: boolean;
-      apiKey: boolean;
-      apiSecret: boolean;
-      appSid: boolean;
+      websocketUrl: boolean;
+      sipDomain: boolean;
+      sipUsername: boolean;
+      sipPassword: boolean;
       callerId: boolean;
     };
   };
@@ -336,7 +344,8 @@ export interface RuntimeStatus {
     host: string | null;
     reason: string | null;
   };
-  twilio: {
+  voice: {
+    provider: VoiceProviderName;
     available: boolean;
   };
 }
@@ -347,5 +356,5 @@ export interface WorkspacePayload {
   leads: Lead[];
   analytics: WorkspaceAnalytics;
   settings: WorkspaceSettingsStatus;
-  twilio: TwilioDialerConfig;
+  voice: VoiceProviderConfig;
 }

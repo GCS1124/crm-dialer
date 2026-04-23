@@ -1,4 +1,4 @@
-import { Call, Device } from "@twilio/voice-sdk";
+import { SimpleUser, type SimpleUserOptions } from "sip.js/lib/platform/web";
 import {
   createContext,
   useContext,
@@ -22,20 +22,26 @@ import type {
   QueueSort,
   SaveDispositionInput,
   ThemeMode,
-  TwilioDialerConfig,
   UploadResult,
   User,
+  VoiceProviderConfig,
   WorkspaceAnalytics,
   WorkspaceSettingsStatus,
   WorkspacePayload,
 } from "../types";
 
-interface VoiceTokenResponse {
+interface VoiceSessionResponse {
+  provider: "embedded-sip";
   available: boolean;
   callerId: string | null;
-  appSid: string | null;
-  token?: string;
-  identity?: string;
+  websocketUrl: string | null;
+  sipDomain: string | null;
+  username: string | null;
+  sipUri?: string;
+  authorizationUsername?: string;
+  authorizationPassword?: string;
+  dialPrefix?: string;
+  displayName?: string;
   message?: string;
 }
 
@@ -49,6 +55,24 @@ interface AuthResponse {
   refreshToken?: string | null;
   user: User;
   message?: string;
+}
+
+function normalizeDialTarget(phone: string, sipDomain: string, dialPrefix = "") {
+  const normalizedPhone = phone.replace(/[^\d+]/g, "");
+  const withoutPlus = normalizedPhone.startsWith("+") ? normalizedPhone.slice(1) : normalizedPhone;
+  const userPart = `${dialPrefix}${withoutPlus}`.trim();
+  return `sip:${userPart}@${sipDomain}`;
+}
+
+function buildVoiceConfigSignature(session: VoiceSessionResponse, displayName: string) {
+  return JSON.stringify({
+    provider: session.provider,
+    websocketUrl: session.websocketUrl,
+    sipDomain: session.sipDomain,
+    username: session.username,
+    sipUri: session.sipUri,
+    displayName,
+  });
 }
 
 function usePersistentState<T>(key: string, fallback: T) {
@@ -92,24 +116,28 @@ const emptyAnalytics: WorkspaceAnalytics = {
   duplicateInsights: [],
 };
 
-const emptyTwilioConfig: TwilioDialerConfig = {
+const emptyVoiceConfig: VoiceProviderConfig = {
+  provider: "embedded-sip",
   available: false,
   callerId: null,
-  appSid: null,
+  websocketUrl: null,
+  sipDomain: null,
+  username: null,
 };
 
 const emptySettingsStatus: WorkspaceSettingsStatus = {
   authMode: "supabase",
   signupEnabled: true,
   importFormats: ["csv", "xlsx", "xls"],
-  twilio: {
+  voice: {
+    provider: "embedded-sip",
     available: false,
     callerId: null,
     configuredFields: {
-      accountSid: false,
-      apiKey: false,
-      apiSecret: false,
-      appSid: false,
+      websocketUrl: false,
+      sipDomain: false,
+      sipUsername: false,
+      sipPassword: false,
       callerId: false,
     },
   },
@@ -128,7 +156,7 @@ interface AppStateContextValue {
   leads: Lead[];
   analytics: WorkspaceAnalytics;
   settingsStatus: WorkspaceSettingsStatus;
-  twilioConfig: TwilioDialerConfig;
+  voiceConfig: VoiceProviderConfig;
   theme: ThemeMode;
   sessionReady: boolean;
   workspaceLoading: boolean;
@@ -166,7 +194,11 @@ interface AppStateContextValue {
   nextLead: () => void;
   skipLead: () => void;
   markLeadInvalid: () => Promise<void>;
-  startCall: () => Promise<void>;
+  startCall: (input?: {
+    phone?: string;
+    leadId?: string | null;
+    displayName?: string;
+  }) => Promise<void>;
   toggleMute: () => void;
   holdCall: () => void;
   resumeCall: () => void;
@@ -206,7 +238,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [analytics, setAnalytics] = useState<WorkspaceAnalytics>(emptyAnalytics);
   const [settingsStatus, setSettingsStatus] = useState<WorkspaceSettingsStatus>(emptySettingsStatus);
-  const [twilioConfig, setTwilioConfig] = useState<TwilioDialerConfig>(emptyTwilioConfig);
+  const [voiceConfig, setVoiceConfig] = useState<VoiceProviderConfig>(emptyVoiceConfig);
   const [sessionReady, setSessionReady] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -226,8 +258,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [wrapUpLeadId, setWrapUpLeadId] = useState<string | null>(null);
   const [wrapUpDurationSeconds, setWrapUpDurationSeconds] = useState(0);
-  const deviceRef = useRef<Device | null>(null);
-  const callRef = useRef<Call | null>(null);
+  const voiceClientRef = useRef<SimpleUser | null>(null);
+  const voiceConfigSignatureRef = useRef<string | null>(null);
+  const activeCallMetaRef = useRef<{ leadId: string | null; startedAt: number } | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const autoDialTimerRef = useRef<number | null>(null);
   const lastAutoDialLeadIdRef = useRef<string | null>(null);
   const notifiedCallbacksRef = useRef<Set<string>>(new Set());
@@ -271,7 +305,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setLeads([]);
           setAnalytics(emptyAnalytics);
           setSettingsStatus(emptySettingsStatus);
-          setTwilioConfig(emptyTwilioConfig);
+          setVoiceConfig(emptyVoiceConfig);
           setWorkspaceError(null);
           setLastWorkspaceSyncAt(null);
           setSessionReady(true);
@@ -310,9 +344,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return () => {
-      deviceRef.current?.destroy();
-      deviceRef.current = null;
-      callRef.current = null;
+      const client = voiceClientRef.current;
+      voiceClientRef.current = null;
+      voiceConfigSignatureRef.current = null;
+      activeCallMetaRef.current = null;
+      remoteAudioRef.current = null;
+      if (client) {
+        void client.unregister().catch(() => undefined);
+        void client.disconnect().catch(() => undefined);
+      }
     };
   }, []);
 
@@ -486,7 +526,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setLeads(payload.leads);
       setAnalytics(payload.analytics);
       setSettingsStatus(payload.settings);
-      setTwilioConfig(payload.twilio);
+      setVoiceConfig(payload.voice);
       setWorkspaceError(null);
       setLastWorkspaceSyncAt(new Date().toISOString());
       return true;
@@ -509,7 +549,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setLeads([]);
     setAnalytics(emptyAnalytics);
     setSettingsStatus(emptySettingsStatus);
-    setTwilioConfig(emptyTwilioConfig);
+    setVoiceConfig(emptyVoiceConfig);
     setWorkspaceError(null);
     setLastWorkspaceSyncAt(null);
     setAutoDialCountdown(null);
@@ -522,47 +562,133 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       window.clearInterval(autoDialTimerRef.current);
       autoDialTimerRef.current = null;
     }
-    callRef.current = null;
-    deviceRef.current?.destroy();
-    deviceRef.current = null;
+    activeCallMetaRef.current = null;
+    const client = voiceClientRef.current;
+    voiceClientRef.current = null;
+    voiceConfigSignatureRef.current = null;
+    remoteAudioRef.current = null;
+    if (client) {
+      void client.unregister().catch(() => undefined);
+      void client.disconnect().catch(() => undefined);
+    }
   }
 
-  function finishCallSession(leadId: string, startedAt: number) {
+  function finishCallSession(leadId: string | null, startedAt: number) {
     setActiveCall((existing) =>
-      existing && existing.leadId === leadId ? null : existing,
+      existing && existing.startedAt === startedAt ? null : existing,
     );
-    setWrapUpLeadId(leadId);
-    setWrapUpDurationSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1000)));
-    callRef.current = null;
+
+    if (leadId) {
+      setWrapUpLeadId(leadId);
+      setWrapUpDurationSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1000)));
+    } else {
+      setWrapUpLeadId(null);
+      setWrapUpDurationSeconds(0);
+    }
+
+    activeCallMetaRef.current = null;
   }
 
-  async function ensureVoiceDevice() {
+  async function destroyVoiceClient() {
+    const client = voiceClientRef.current;
+    voiceClientRef.current = null;
+    voiceConfigSignatureRef.current = null;
+    remoteAudioRef.current = null;
+
+    if (!client) {
+      return;
+    }
+
+    try {
+      await client.unregister();
+    } catch {
+      // Ignore unregister failures during cleanup.
+    }
+
+    try {
+      await client.disconnect();
+    } catch {
+      // Ignore disconnect failures during cleanup.
+    }
+  }
+
+  async function ensureVoiceClient() {
     if (!authToken) {
       throw new Error("Missing session");
     }
 
-    const response = await apiRequest<VoiceTokenResponse>("/dialer/token", {
+    const response = await apiRequest<VoiceSessionResponse>("/dialer/session", {
       token: authToken,
     });
 
-    setTwilioConfig({
+    setVoiceConfig({
+      provider: response.provider,
       available: response.available,
       callerId: response.callerId ?? null,
-      appSid: response.appSid ?? null,
+      websocketUrl: response.websocketUrl ?? null,
+      sipDomain: response.sipDomain ?? null,
+      username: response.username ?? null,
     });
 
-    if (!response.available || !response.token) {
-      return null;
+    if (
+      !response.available ||
+      !response.websocketUrl ||
+      !response.sipDomain ||
+      !response.sipUri ||
+      !response.authorizationUsername ||
+      !response.authorizationPassword
+    ) {
+      return { client: null, session: response };
     }
 
-    if (!deviceRef.current) {
-      deviceRef.current = new Device(response.token);
-      await deviceRef.current.register();
-    } else {
-      deviceRef.current.updateToken(response.token);
+    const displayName = response.displayName ?? currentUser?.name ?? response.username ?? "Agent";
+    const signature = buildVoiceConfigSignature(response, displayName);
+
+    if (!voiceClientRef.current || voiceConfigSignatureRef.current !== signature) {
+      await destroyVoiceClient();
+
+      const remoteAudio = new Audio();
+      remoteAudio.autoplay = true;
+      remoteAudioRef.current = remoteAudio;
+
+      const options: SimpleUserOptions = {
+        aor: response.sipUri,
+        media: {
+          remote: {
+            audio: remoteAudio,
+          },
+        },
+        userAgentOptions: {
+          authorizationUsername: response.authorizationUsername,
+          authorizationPassword: response.authorizationPassword,
+          displayName,
+        },
+      };
+
+      const client = new SimpleUser(response.websocketUrl, options);
+      client.delegate = {
+        onCallAnswered: () => {
+          setActiveCall((existing) =>
+            existing ? { ...existing, status: "connected" } : existing,
+          );
+        },
+        onCallHangup: () => {
+          const meta = activeCallMetaRef.current;
+          if (!meta) {
+            return;
+          }
+          finishCallSession(meta.leadId, meta.startedAt);
+        },
+      };
+
+      await client.connect();
+      await client.register();
+
+      voiceClientRef.current = client;
+      voiceConfigSignatureRef.current = signature;
     }
 
-    return deviceRef.current;
+    return { client: voiceClientRef.current, session: response };
   }
 
   const login = async (email: string, password: string) => {
@@ -696,8 +822,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setCurrentLeadId(nextId);
   };
 
-  const startCall = async () => {
-    if (!currentLeadId || activeCall || wrapUpLeadId) {
+  const startCall = async (input?: {
+    phone?: string;
+    leadId?: string | null;
+    displayName?: string;
+  }) => {
+    if (activeCall || wrapUpLeadId) {
       return;
     }
 
@@ -708,20 +838,50 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setAutoDialCountdown(null);
 
     const startedAt = Date.now();
+    const requestedLeadId =
+      input && Object.prototype.hasOwnProperty.call(input, "leadId")
+        ? input.leadId ?? null
+        : currentLeadId;
+    const lead = requestedLeadId
+      ? leads.find((item) => item.id === requestedLeadId) ?? null
+      : null;
+
+    if (requestedLeadId && !lead) {
+      throw new Error("Lead not found");
+    }
+
+    const dialedNumber = (input?.phone ?? lead?.phone ?? "").trim();
+    if (!dialedNumber) {
+      throw new Error("Phone number not found");
+    }
+
+    const callLeadId = lead?.id ?? requestedLeadId ?? null;
+    const displayName = (input?.displayName ?? lead?.fullName ?? dialedNumber).trim();
+
+    if (!callLeadId && currentLeadId) {
+      lastAutoDialLeadIdRef.current = currentLeadId;
+    }
+
+    activeCallMetaRef.current = {
+      leadId: callLeadId,
+      startedAt,
+    };
     setActiveCall({
-      leadId: currentLeadId,
+      leadId: callLeadId,
+      dialedNumber,
+      displayName,
       startedAt,
       status: "ringing",
       muted: false,
-      recordingEnabled: twilioConfig.available,
+      recordingEnabled: voiceConfig.available,
     });
 
     try {
-      const device = await ensureVoiceDevice();
-      if (!device) {
+      const { client, session } = await ensureVoiceClient();
+      if (!client || !session.sipDomain) {
         window.setTimeout(() => {
           setActiveCall((existing) =>
-            existing && existing.leadId === currentLeadId
+            existing && existing.startedAt === startedAt
               ? { ...existing, status: "connected" }
               : existing,
           );
@@ -729,35 +889,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const lead = leads.find((item) => item.id === currentLeadId);
-      if (!lead) {
-        throw new Error("Lead not found");
-      }
-
-      const call = await device.connect({
-        params: {
-          To: lead.phone,
-          leadId: lead.id,
-        },
-      });
-      callRef.current = call;
-
-      call.on("accept", () => {
-        setActiveCall((existing) =>
-          existing && existing.leadId === lead.id ? { ...existing, status: "connected" } : existing,
-        );
-      });
-      call.on("disconnect", () => finishCallSession(lead.id, startedAt));
-      call.on("cancel", () => finishCallSession(lead.id, startedAt));
-      call.on("error", () => finishCallSession(lead.id, startedAt));
+      await client.call(normalizeDialTarget(dialedNumber, session.sipDomain, session.dialPrefix));
     } catch {
-      setActiveCall({
-        leadId: currentLeadId,
-        startedAt,
-        status: "connected",
-        muted: false,
-        recordingEnabled: false,
-      });
+      setActiveCall((existing) =>
+        existing && existing.startedAt === startedAt
+          ? { ...existing, status: "connected", recordingEnabled: false }
+          : existing,
+      );
     }
   };
 
@@ -768,7 +906,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
 
       const nextMuted = !existing.muted;
-      callRef.current?.mute(nextMuted);
+      if (nextMuted) {
+        voiceClientRef.current?.mute();
+      } else {
+        voiceClientRef.current?.unmute();
+      }
       return { ...existing, muted: nextMuted };
     });
   };
@@ -779,7 +921,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return existing;
       }
 
-      callRef.current?.mute(true);
+      void voiceClientRef.current?.hold().catch(() => undefined);
       return { ...existing, status: "on_hold", muted: true };
     });
   };
@@ -790,7 +932,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return existing;
       }
 
-      callRef.current?.mute(false);
+      void voiceClientRef.current?.unhold().catch(() => undefined);
       return { ...existing, status: "connected", muted: false };
     });
   };
@@ -800,8 +942,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (callRef.current) {
-      callRef.current.disconnect();
+    if (voiceClientRef.current) {
+      void voiceClientRef.current.hangup().catch(() => undefined);
       return;
     }
 
@@ -826,7 +968,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         ...input,
         leadId: wrapUpLeadId,
         durationSeconds: wrapUpDurationSeconds || 60,
-        recordingEnabled: activeCall?.recordingEnabled ?? twilioConfig.available,
+        recordingEnabled: activeCall?.recordingEnabled ?? voiceConfig.available,
       }),
     });
 
@@ -1004,7 +1146,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         leads,
         analytics,
         settingsStatus,
-        twilioConfig,
+        voiceConfig,
         theme,
         sessionReady,
         workspaceLoading,

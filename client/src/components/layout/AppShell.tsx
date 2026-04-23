@@ -12,15 +12,15 @@ export function AppShell() {
   const { workspaceError, workspaceLoading, refreshWorkspace } = useAppState();
 
   return (
-    <div className="min-h-screen px-4 py-5">
-      <div className="mx-auto flex min-h-[calc(100vh-40px)] max-w-[1460px] overflow-hidden rounded-[8px] border border-slate-300 bg-[#edf2f7] shadow-[0_20px_60px_rgba(71,85,105,0.16)] dark:border-slate-800 dark:bg-slate-950">
-        <div className="hidden w-[74px] shrink-0 lg:block">
+    <div className="min-h-screen px-3 py-3 lg:px-5 lg:py-5">
+      <div className="crm-shell mx-auto flex min-h-[calc(100vh-24px)] max-w-[1560px] overflow-hidden rounded-[24px]">
+        <div className="hidden w-[92px] shrink-0 lg:block">
           <Sidebar />
         </div>
-        <main className="min-w-0 flex-1 bg-[#edf2f7] dark:bg-slate-950">
+        <main className="min-w-0 flex-1 bg-[#f4f8fc] dark:bg-slate-950">
           <div className="space-y-0">
             {isDialerView ? null : <TopBar />}
-            <div className={isDialerView ? "" : "p-4"}>
+            <div className={isDialerView ? "" : "p-4 lg:p-6"}>
               {!isDialerView && workspaceError ? (
                 <AlertBanner
                   title="Workspace sync issue"
