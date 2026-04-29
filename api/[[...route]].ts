@@ -1,4 +1,4 @@
-import { createApp } from "../server/src/app";
+import { createApp } from "../server/src/app.js";
 
 const app = createApp({
   apiMounts: ["/", "/api"],
