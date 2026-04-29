@@ -3,7 +3,7 @@ import { z } from "zod";
 
 dotenv.config();
 
-const defaultDataMode = process.env.VERCEL ? "supabase" : "auto";
+const defaultDataMode = "auto";
 const withLegacyFallback = (currentName: string, legacyName: string, fallback: string) =>
   process.env[currentName] ?? process.env[legacyName] ?? fallback;
 

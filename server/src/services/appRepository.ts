@@ -273,7 +273,8 @@ function buildSettingsStatus() {
     "service-role-key",
     "your-service-role-key",
   ]);
-  const connected = isConfiguredSupabaseUrl() && serviceRoleConfigured;
+  const connected =
+    isConfiguredSupabaseUrl() && publishableKeyConfigured && serviceRoleConfigured;
 
   return {
     authMode: "supabase" as const,
@@ -289,6 +290,8 @@ function buildSettingsStatus() {
       connected,
       publishableKeyConfigured,
       serviceRoleConfigured,
+      reason: connected ? "Supabase credentials are configured." : "One or more Supabase credentials are missing.",
+      realtimeAvailable: publishableKeyConfigured,
     },
   };
 }

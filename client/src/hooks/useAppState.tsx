@@ -186,6 +186,7 @@ interface AppStateContextValue {
     email: string,
     password: string,
   ) => Promise<{ success: boolean; message?: string }>;
+  continueWithGoogle: () => Promise<{ success: boolean; message?: string }>;
   signup: (input: {
     name: string;
     email: string;
@@ -319,7 +320,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     let active = true;
 
     async function hydrateSession() {
-      if (!authToken) {
+      let nextToken = authToken;
+
+      if (!nextToken && supabase) {
+        const sessionResult = await supabase.auth.getSession();
+        nextToken = sessionResult.data.session?.access_token ?? null;
+      }
+
+      if (!nextToken) {
         if (active) {
           setCurrentUser(null);
           setUsers([]);
@@ -340,16 +348,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
       try {
         const payload = await apiRequest<{ user: User }>("/auth/me", {
-          token: authToken,
+          token: nextToken,
         });
 
         if (!active) {
           return;
         }
 
+        if (!authToken && nextToken) {
+          setAuthToken(nextToken);
+        }
         setCurrentUser(payload.user);
-        await loadWorkspace(authToken, { silent: true });
+        await loadWorkspace(nextToken, { silent: true });
       } catch {
+        if (!authToken) {
+          await supabase?.auth.signOut();
+        }
         if (active) {
           cleanupSession();
         }
@@ -800,6 +814,34 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             : "Cannot reach the sign-in service. Check that the backend is running.",
       };
     }
+  };
+
+  const continueWithGoogle = async () => {
+    if (!supabase) {
+      return {
+        success: false,
+        message: "Google sign-in requires a configured Supabase browser client.",
+      };
+    }
+
+    const redirectTo =
+      typeof window !== "undefined" ? `${window.location.origin}/login` : undefined;
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo,
+      },
+    });
+
+    if (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+
+    return { success: true };
   };
 
   const logout = () => {
@@ -1302,6 +1344,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         autoDialDelaySeconds,
         autoDialCountdown,
         login,
+        continueWithGoogle,
         signup,
         logout,
         refreshWorkspace,

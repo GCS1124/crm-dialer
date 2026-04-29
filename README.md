@@ -89,7 +89,7 @@ npm.cmd run build
 This repo is wired for a single Vercel project:
 
 - the frontend is built from `client/` into `client/dist`
-- the Node API runs as one Vercel Function from [api/[[...route]].ts](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJECTS/crm%20dialer/api/[[...route]].ts)
+- the Node API runs as one Vercel Function from `api/router.ts`
 - frontend routes are rewritten back to `index.html`
 - production API calls default to the same deployed origin at `/api`
 
@@ -98,13 +98,13 @@ Recommended project setup on Vercel:
 1. Use the repo root as the project root directory.
 2. Let [vercel.json](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJECTS/crm%20dialer/vercel.json) control the build command and output directory.
 3. Leave `VITE_API_BASE_URL` empty unless the frontend should call a different API host.
-4. Set `DATA_MODE=supabase` so production never falls back to the local JSON store.
+4. Use `DATA_MODE=auto` unless you explicitly want to block local fallback on bad Supabase config.
 
 Required Vercel environment variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `DATA_MODE=supabase`
+- `DATA_MODE=auto`
 - `JWT_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
@@ -128,6 +128,7 @@ Defined in [client/.env.example](/C:/Users/Anushi%20Mittal/Downloads/GCS%20PROJE
 - `VITE_API_BASE_URL` optional, leave blank on Vercel for same-origin `/api`
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` optional alternative to `VITE_SUPABASE_ANON_KEY`
 
 ## Backend env vars
 
@@ -252,4 +253,4 @@ If the SIP configuration is not ready yet, the dialer falls back to manual call 
 - The frontend also uses a Supabase client for realtime subscriptions so call and follow-up updates appear without a manual refresh.
 - CSV and Excel imports both feed the backend and can be used to build bulk calling queues quickly.
 - Embedded SIP/WebRTC session configuration is wired on the backend, with manual call logging available as a fallback.
-- On Vercel, the frontend defaults to same-origin `/api` calls and production defaults to `DATA_MODE=supabase` when `VERCEL` is present.
+- On Vercel, the frontend defaults to same-origin `/api` calls and the backend now defaults to `DATA_MODE=auto`, which allows clean local fallback when Supabase credentials are incomplete.

@@ -23,12 +23,38 @@ function normalizeSupabaseUrl() {
   return env.SUPABASE_URL.trim();
 }
 
+function normalizeSupabaseKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function isConfiguredSupabaseUrl() {
   const normalized = normalizeSupabaseUrl().toLowerCase();
   return (
     Boolean(normalized) &&
     normalized.startsWith("https://") &&
     !normalized.includes("your-project.supabase.co")
+  );
+}
+
+function isConfiguredSupabasePublishableKey() {
+  const normalized = normalizeSupabaseKey(env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY);
+
+  return (
+    normalized.length > 20 &&
+    !["publishable-key", "anon-key", "your-supabase-publishable-key", "your-supabase-anon-key"].includes(
+      normalized,
+    ) &&
+    !normalized.startsWith("replace-with-")
+  );
+}
+
+function isConfiguredSupabaseServiceRoleKey() {
+  const normalized = normalizeSupabaseKey(env.SUPABASE_SERVICE_ROLE_KEY);
+
+  return (
+    normalized.length > 20 &&
+    !["service-role-key", "your-service-role-key"].includes(normalized) &&
+    !normalized.startsWith("replace-with-")
   );
 }
 
@@ -41,15 +67,45 @@ function extractHost(value: string) {
 }
 
 async function probeSupabaseHost() {
-  const configured = isConfiguredSupabaseUrl();
-  const host = configured ? extractHost(normalizeSupabaseUrl()) : null;
+  const urlConfigured = isConfiguredSupabaseUrl();
+  const publishableKeyConfigured = isConfiguredSupabasePublishableKey();
+  const serviceRoleConfigured = isConfiguredSupabaseServiceRoleKey();
+  const configured = urlConfigured && publishableKeyConfigured && serviceRoleConfigured;
+  const host = urlConfigured ? extractHost(normalizeSupabaseUrl()) : null;
 
-  if (!configured || !host) {
+  if (!urlConfigured) {
     return {
-      configured,
+      configured: false,
       reachable: false,
       host,
       reason: "Supabase URL is not configured.",
+    };
+  }
+
+  if (!publishableKeyConfigured) {
+    return {
+      configured: false,
+      reachable: false,
+      host,
+      reason: "Supabase publishable credentials are not configured.",
+    };
+  }
+
+  if (!serviceRoleConfigured) {
+    return {
+      configured: false,
+      reachable: false,
+      host,
+      reason: "Supabase service role credentials are not configured.",
+    };
+  }
+
+  if (!host) {
+    return {
+      configured: false,
+      reachable: false,
+      host,
+      reason: "Supabase URL is invalid.",
     };
   }
 
@@ -96,24 +152,19 @@ export async function getRuntimeStatus(forceRefresh = false): Promise<RuntimeSta
     status = buildExplicitLocalStatus();
   } else {
     const supabase = await probeSupabaseHost();
-    const dataMode =
-      env.DATA_MODE === "supabase"
-        ? "supabase"
-        : supabase.configured && supabase.reachable
-          ? "supabase"
-          : "local";
+    const canUseSupabase = supabase.configured && supabase.reachable;
+    const dataMode = canUseSupabase ? "supabase" : "local";
+    const fallbackReason =
+      env.DATA_MODE === "supabase" && !canUseSupabase
+        ? `Supabase mode was requested, but ${supabase.reason?.toLowerCase() ?? "the configuration check did not pass"}. Falling back to local mode.`
+        : supabase.reason;
 
     status = {
       dataMode,
-      supabase:
-        dataMode === "local" && env.DATA_MODE === "supabase"
-          ? {
-              ...supabase,
-              reason:
-                supabase.reason ??
-                "Supabase mode is forced by DATA_MODE=supabase, but the host check did not pass.",
-            }
-          : supabase,
+      supabase: {
+        ...supabase,
+        reason: dataMode === "local" ? fallbackReason : supabase.reason,
+      },
     };
   }
 

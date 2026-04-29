@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -71,16 +72,19 @@ interface LocalStoreState {
   userSipPreferences: LocalUserSipPreferenceRecord[];
 }
 
-const storePath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-  "data",
-  "local-dev-store.json",
-);
+const storePath = process.env.VERCEL
+  ? join(tmpdir(), "crm-dialer", "local-dev-store.json")
+  : join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "data",
+      "local-dev-store.json",
+    );
 
 let cachedState: LocalStoreState | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
+let persistenceDisabled = false;
 
 function nowIso() {
   return new Date().toISOString();
@@ -727,8 +731,20 @@ function ensureDefaultSipProfileRecord(state: LocalStoreState) {
 async function persistState(state: LocalStoreState) {
   state.updatedAt = nowIso();
   cachedState = state;
-  await mkdir(dirname(storePath), { recursive: true });
-  await writeFile(storePath, JSON.stringify(state, null, 2), "utf8");
+  if (persistenceDisabled) {
+    return;
+  }
+
+  try {
+    await mkdir(dirname(storePath), { recursive: true });
+    await writeFile(storePath, JSON.stringify(state, null, 2), "utf8");
+  } catch (error) {
+    persistenceDisabled = true;
+    console.warn(
+      `Local workspace persistence is unavailable at ${storePath}. Falling back to in-memory state.`,
+      error,
+    );
+  }
 }
 
 async function loadState() {
@@ -737,6 +753,10 @@ async function loadState() {
   }
 
   try {
+    if (persistenceDisabled) {
+      throw new Error("Persistence disabled");
+    }
+
     const raw = await readFile(storePath, "utf8");
     cachedState = JSON.parse(raw) as LocalStoreState;
   } catch {

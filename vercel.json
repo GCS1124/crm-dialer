@@ -3,6 +3,16 @@
   "installCommand": "npm install",
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "client/dist",
+  "routes": [
+    {
+      "src": "^/api$",
+      "dest": "/api/router"
+    },
+    {
+      "src": "^/api/(.*)$",
+      "dest": "/api/router?route=$1"
+    }
+  ],
   "rewrites": [
     {
       "source": "/health",
