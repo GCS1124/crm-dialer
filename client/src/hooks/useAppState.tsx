@@ -14,6 +14,7 @@ import { supabase } from "../lib/supabase";
 import type {
   ActiveCall,
   CallLogFormInput,
+  CreateSipProfileInput,
   Lead,
   LeadImportRecord,
   LeadPriority,
@@ -21,6 +22,7 @@ import type {
   QueueFilter,
   QueueSort,
   SaveDispositionInput,
+  SipProfile,
   ThemeMode,
   UploadResult,
   User,
@@ -33,10 +35,13 @@ import type {
 interface VoiceSessionResponse {
   provider: "embedded-sip";
   available: boolean;
+  source: "profile" | "environment" | "unconfigured";
   callerId: string | null;
   websocketUrl: string | null;
   sipDomain: string | null;
   username: string | null;
+  profileId: string | null;
+  profileLabel: string | null;
   sipUri?: string;
   authorizationUsername?: string;
   authorizationPassword?: string;
@@ -119,10 +124,13 @@ const emptyAnalytics: WorkspaceAnalytics = {
 const emptyVoiceConfig: VoiceProviderConfig = {
   provider: "embedded-sip",
   available: false,
+  source: "unconfigured",
   callerId: null,
   websocketUrl: null,
   sipDomain: null,
   username: null,
+  profileId: null,
+  profileLabel: null,
 };
 
 const emptySettingsStatus: WorkspaceSettingsStatus = {
@@ -157,6 +165,10 @@ interface AppStateContextValue {
   analytics: WorkspaceAnalytics;
   settingsStatus: WorkspaceSettingsStatus;
   voiceConfig: VoiceProviderConfig;
+  sipProfiles: SipProfile[];
+  activeSipProfile: SipProfile | null;
+  sipProfileSelectionRequired: boolean;
+  callError: string | null;
   theme: ThemeMode;
   sessionReady: boolean;
   workspaceLoading: boolean;
@@ -226,6 +238,11 @@ interface AppStateContextValue {
     title: string;
   }) => Promise<InviteUserResult>;
   setUserStatus: (userId: string, status: User["status"]) => Promise<void>;
+  createSipProfile: (
+    input: CreateSipProfileInput,
+    options?: { activate?: boolean },
+  ) => Promise<SipProfile>;
+  activateSipProfile: (profileId: string) => Promise<void>;
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
@@ -239,6 +256,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [analytics, setAnalytics] = useState<WorkspaceAnalytics>(emptyAnalytics);
   const [settingsStatus, setSettingsStatus] = useState<WorkspaceSettingsStatus>(emptySettingsStatus);
   const [voiceConfig, setVoiceConfig] = useState<VoiceProviderConfig>(emptyVoiceConfig);
+  const [sipProfiles, setSipProfiles] = useState<SipProfile[]>([]);
+  const [activeSipProfile, setActiveSipProfile] = useState<SipProfile | null>(null);
+  const [sipProfileSelectionRequired, setSipProfileSelectionRequired] = useState(false);
+  const [callError, setCallError] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -306,6 +327,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           setAnalytics(emptyAnalytics);
           setSettingsStatus(emptySettingsStatus);
           setVoiceConfig(emptyVoiceConfig);
+          setSipProfiles([]);
+          setActiveSipProfile(null);
+          setSipProfileSelectionRequired(false);
+          setCallError(null);
           setWorkspaceError(null);
           setLastWorkspaceSyncAt(null);
           setSessionReady(true);
@@ -394,7 +419,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         }
         setAutoDialCountdown(null);
         lastAutoDialLeadIdRef.current = leadId;
-        void startCall();
+        void startCall().catch(() => undefined);
       }
     }, 250);
 
@@ -527,6 +552,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setAnalytics(payload.analytics);
       setSettingsStatus(payload.settings);
       setVoiceConfig(payload.voice);
+      setSipProfiles(payload.sipProfiles);
+      setActiveSipProfile(payload.activeSipProfile);
+      setSipProfileSelectionRequired(payload.sipProfileSelectionRequired);
       setWorkspaceError(null);
       setLastWorkspaceSyncAt(new Date().toISOString());
       return true;
@@ -550,6 +578,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setAnalytics(emptyAnalytics);
     setSettingsStatus(emptySettingsStatus);
     setVoiceConfig(emptyVoiceConfig);
+    setSipProfiles([]);
+    setActiveSipProfile(null);
+    setSipProfileSelectionRequired(false);
+    setCallError(null);
     setWorkspaceError(null);
     setLastWorkspaceSyncAt(null);
     setAutoDialCountdown(null);
@@ -589,6 +621,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     activeCallMetaRef.current = null;
   }
 
+  function failCallSession(message: string, startedAt: number) {
+    setActiveCall((existing) => {
+      if (!existing || existing.startedAt !== startedAt) {
+        return existing;
+      }
+
+      if (
+        existing.status === "connected" ||
+        existing.status === "on_hold" ||
+        existing.status === "manual"
+      ) {
+        if (existing.leadId) {
+          setWrapUpLeadId(existing.leadId);
+          setWrapUpDurationSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1000)));
+        }
+        return null;
+      }
+
+      return null;
+    });
+    activeCallMetaRef.current = null;
+    setCallError(message);
+  }
+
   async function destroyVoiceClient() {
     const client = voiceClientRef.current;
     voiceClientRef.current = null;
@@ -624,10 +680,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setVoiceConfig({
       provider: response.provider,
       available: response.available,
+      source: response.source,
       callerId: response.callerId ?? null,
       websocketUrl: response.websocketUrl ?? null,
       sipDomain: response.sipDomain ?? null,
       username: response.username ?? null,
+      profileId: response.profileId ?? null,
+      profileLabel: response.profileLabel ?? null,
     });
 
     if (
@@ -667,7 +726,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
       const client = new SimpleUser(response.websocketUrl, options);
       client.delegate = {
+        onCallCreated: () => {
+          setCallError(null);
+          setActiveCall((existing) =>
+            existing ? { ...existing, status: "ringing" } : existing,
+          );
+        },
         onCallAnswered: () => {
+          setCallError(null);
           setActiveCall((existing) =>
             existing ? { ...existing, status: "connected" } : existing,
           );
@@ -678,6 +744,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             return;
           }
           finishCallSession(meta.leadId, meta.startedAt);
+        },
+        onServerDisconnect: (error) => {
+          const message =
+            error?.message?.trim() ||
+            "The CRM softphone disconnected from the SIP server before the call could be completed.";
+          const meta = activeCallMetaRef.current;
+
+          if (meta) {
+            failCallSession(message, meta.startedAt);
+            return;
+          }
+
+          setCallError(message);
         },
       };
 
@@ -836,6 +915,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       autoDialTimerRef.current = null;
     }
     setAutoDialCountdown(null);
+    setCallError(null);
 
     const startedAt = Date.now();
     const requestedLeadId =
@@ -878,24 +958,40 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     try {
       const { client, session } = await ensureVoiceClient();
-      if (!client || !session.sipDomain) {
-        window.setTimeout(() => {
-          setActiveCall((existing) =>
-            existing && existing.startedAt === startedAt
-              ? { ...existing, status: "connected" }
-              : existing,
-          );
-        }, 400);
+      if (!session.available) {
+        setActiveCall((existing) =>
+          existing && existing.startedAt === startedAt
+            ? {
+                ...existing,
+                status: "manual",
+                recordingEnabled: false,
+              }
+            : existing,
+        );
+        setCallError(
+          session.message ??
+            "Browser calling is unavailable right now. Continue the call manually and log the outcome here.",
+        );
         return;
       }
 
+      if (!client || !session.sipDomain) {
+        throw new Error(
+          session.message ??
+            "The CRM softphone could not start a SIP session for this call.",
+        );
+      }
+
       await client.call(normalizeDialTarget(dialedNumber, session.sipDomain, session.dialPrefix));
-    } catch {
-      setActiveCall((existing) =>
-        existing && existing.startedAt === startedAt
-          ? { ...existing, status: "connected", recordingEnabled: false }
-          : existing,
+    } catch (error) {
+      await destroyVoiceClient();
+      failCallSession(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "The CRM softphone could not place the SIP call.",
+        startedAt,
       );
+      throw error;
     }
   };
 
@@ -1138,6 +1234,47 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await refreshWorkspace();
   };
 
+  const activateSipProfile = async (profileId: string) => {
+    if (!authToken) {
+      throw new Error("Missing session");
+    }
+
+    if (activeCall) {
+      throw new Error("End the current call before switching the SIP profile.");
+    }
+
+    await destroyVoiceClient();
+    await apiRequest("/sip-profiles/active", {
+      method: "PATCH",
+      token: authToken,
+      body: JSON.stringify({ profileId }),
+    });
+    await refreshWorkspace();
+  };
+
+  const createSipProfile = async (
+    input: CreateSipProfileInput,
+    options: { activate?: boolean } = {},
+  ) => {
+    if (!authToken) {
+      throw new Error("Missing session");
+    }
+
+    const response = await apiRequest<{ profile: SipProfile }>("/sip-profiles", {
+      method: "POST",
+      token: authToken,
+      body: JSON.stringify(input),
+    });
+
+    if (options.activate) {
+      await activateSipProfile(response.profile.id);
+      return response.profile;
+    }
+
+    await refreshWorkspace();
+    return response.profile;
+  };
+
   return (
     <AppStateContext.Provider
       value={{
@@ -1147,6 +1284,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         analytics,
         settingsStatus,
         voiceConfig,
+        sipProfiles,
+        activeSipProfile,
+        sipProfileSelectionRequired,
+        callError,
         theme,
         sessionReady,
         workspaceLoading,
@@ -1192,6 +1333,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         reopenLead: reopenLeadRecord,
         inviteUser,
         setUserStatus,
+        createSipProfile,
+        activateSipProfile,
       }}
     >
       {children}

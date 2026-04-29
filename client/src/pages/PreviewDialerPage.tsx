@@ -30,6 +30,7 @@ import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "
 
 import { ActivityTimeline } from "../components/dialer/ActivityTimeline";
 import { PostCallPanel } from "../components/dialer/PostCallPanel";
+import { AlertBanner } from "../components/shared/AlertBanner";
 import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
 import { EmptyState } from "../components/shared/EmptyState";
@@ -190,6 +191,7 @@ export function PreviewDialerPage() {
     currentLeadId,
     activeCall,
     wrapUpLeadId,
+    callError,
     selectLead,
     previousLead,
     nextLead,
@@ -261,6 +263,7 @@ export function PreviewDialerPage() {
   const headerName = activeCallLead?.fullName || activeCall?.displayName || activeLead?.fullName || "--";
   const headerPhone = activeCallLead?.phone || activeCall?.dialedNumber || activeLead?.phone || "--";
   const headerInitials = getInitials(headerName);
+  const manualCallActive = activeCall?.status === "manual";
   const quickFillNumbers = [activeLead?.phone || "", activeLead?.altPhone || ""]
     .map((value) => sanitizeDialPadInput(value))
     .filter((value, index, items) => Boolean(value) && items.indexOf(value) === index);
@@ -540,6 +543,16 @@ export function PreviewDialerPage() {
         {callbackMessage ? (
           <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-300">
             {callbackMessage}
+          </div>
+        ) : null}
+
+        {callError ? (
+          <div className="border-b border-rose-200 bg-rose-50/80 px-4 py-3 dark:border-rose-500/20 dark:bg-rose-950/20">
+            <AlertBanner
+              title="Softphone error"
+              description={callError}
+              tone="error"
+            />
           </div>
         ) : null}
 
@@ -954,7 +967,7 @@ export function PreviewDialerPage() {
                   <button
                     type="button"
                     onClick={toggleMute}
-                    disabled={!activeCall}
+                    disabled={!activeCall || manualCallActive}
                     className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     <Mic size={15} />
@@ -968,7 +981,7 @@ export function PreviewDialerPage() {
                   <button
                     type="button"
                     onClick={activeCall?.status === "on_hold" ? resumeCall : holdCall}
-                    disabled={!activeCall}
+                    disabled={!activeCall || manualCallActive}
                     className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     <Pause size={15} />
@@ -979,10 +992,10 @@ export function PreviewDialerPage() {
                   {activeCall ? (
                     <Button size="md" variant="danger" onClick={endCall}>
                       <PhoneOff size={15} />
-                      End call
+                      {manualCallActive ? "Finish manual call" : "End call"}
                     </Button>
                   ) : (
-                    <Button size="md" onClick={() => void startCall()}>
+                    <Button size="md" onClick={() => void startCall().catch(() => undefined)}>
                       <PhoneCall size={15} />
                       Call
                     </Button>
@@ -1374,15 +1387,26 @@ export function PreviewDialerPage() {
 
                   <DetailSection title="Call actions">
                     <div className="space-y-2">
-                      <Button size="sm" className="w-full" onClick={() => void startCall()} disabled={Boolean(activeCall)}>
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() => void startCall().catch(() => undefined)}
+                        disabled={Boolean(activeCall)}
+                      >
                         <PhoneCall size={14} />
                         Call now
                       </Button>
                       <Button size="sm" variant="danger" className="w-full" onClick={endCall} disabled={!activeCall}>
                         <PhoneOff size={14} />
-                        End call
+                        {manualCallActive ? "Finish manual call" : "End call"}
                       </Button>
-                      <Button size="sm" variant="secondary" className="w-full" onClick={toggleMute} disabled={!activeCall}>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full"
+                        onClick={toggleMute}
+                        disabled={!activeCall || manualCallActive}
+                      >
                         <Mic size={14} />
                         {activeCall?.muted ? "Unmute" : "Mute"}
                       </Button>
@@ -1391,7 +1415,7 @@ export function PreviewDialerPage() {
                         variant="secondary"
                         className="w-full"
                         onClick={activeCall?.status === "on_hold" ? resumeCall : holdCall}
-                        disabled={!activeCall}
+                        disabled={!activeCall || manualCallActive}
                       >
                         <Pause size={14} />
                         {activeCall?.status === "on_hold" ? "Resume" : "Hold"}

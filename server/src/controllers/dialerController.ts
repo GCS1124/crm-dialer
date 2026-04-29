@@ -1,8 +1,18 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 
-import { getUserById, getVoiceIdentity, saveDisposition } from "../services/repository.js";
-import { createVoiceSessionPayload } from "../services/voiceProviderService.js";
+import {
+  getActiveSipProfile,
+  getUserById,
+  getVoiceIdentity,
+  listSipProfiles,
+  saveDisposition,
+} from "../services/repository.js";
+import {
+  createVoiceSessionPayload,
+  createVoiceSessionPayloadFromSipProfile,
+  getVoiceProviderConfig,
+} from "../services/voiceProviderService.js";
 
 const dispositionSchema = z.object({
   leadId: z.string(),
@@ -42,6 +52,32 @@ export async function voiceSessionController(_req: Request, res: Response) {
   }
 
   const identity = await getVoiceIdentity(currentUser);
+  const [activeSipProfile, visibleProfiles] = await Promise.all([
+    getActiveSipProfile(currentUser),
+    listSipProfiles(currentUser),
+  ]);
+
+  if (activeSipProfile) {
+    return res.json(
+      createVoiceSessionPayloadFromSipProfile(activeSipProfile, currentUser.name || identity),
+    );
+  }
+
+  if (visibleProfiles.length > 0) {
+    return res.status(409).json({
+      ...getVoiceProviderConfig(),
+      available: false,
+      source: "unconfigured" as const,
+      callerId: null,
+      websocketUrl: null,
+      sipDomain: null,
+      username: null,
+      profileId: null,
+      profileLabel: null,
+      message: "Select a SIP profile before starting browser calls.",
+    });
+  }
+
   return res.json(createVoiceSessionPayload(currentUser.name || identity));
 }
 

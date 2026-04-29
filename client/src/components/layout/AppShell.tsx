@@ -3,13 +3,19 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useAppState } from "../../hooks/useAppState";
 import { AlertBanner } from "../shared/AlertBanner";
 import { Button } from "../shared/Button";
+import { SipProfileSelectorDialog } from "../softphone/SipProfileSelectorDialog";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
 export function AppShell() {
   const location = useLocation();
   const isDialerView = location.pathname === "/dialer";
-  const { workspaceError, workspaceLoading, refreshWorkspace } = useAppState();
+  const {
+    sipProfileSelectionRequired,
+    workspaceError,
+    workspaceLoading,
+    refreshWorkspace,
+  } = useAppState();
 
   return (
     <div className="min-h-screen px-3 py-3 lg:px-5 lg:py-5">
@@ -44,6 +50,7 @@ export function AppShell() {
           </div>
         </main>
       </div>
+      {sipProfileSelectionRequired ? <SipProfileSelectorDialog /> : null}
     </div>
   );
 }

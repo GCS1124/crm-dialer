@@ -5,11 +5,14 @@ import type {
   ApiLeadImportRecord,
   ApiLeadPriority,
   ApiLeadStatus,
+  ApiSipProfile,
   ApiUser,
   CreateCallLogInput,
+  CreateSipProfileInput,
   CreateUserInput,
   SaveDispositionInput,
   SignupInput,
+  StoredSipProfile,
 } from "../types/index.js";
 
 async function getRepository() {
@@ -131,6 +134,22 @@ export async function updateWorkspaceUserStatus(
   currentUser: ApiUser,
 ) {
   return (await getRepository()).updateWorkspaceUserStatus(userId, status, currentUser);
+}
+
+export async function listSipProfiles(currentUser: ApiUser): Promise<ApiSipProfile[]> {
+  return (await getRepository()).listSipProfiles(currentUser);
+}
+
+export async function getActiveSipProfile(currentUser: ApiUser): Promise<StoredSipProfile | null> {
+  return (await getRepository()).getActiveSipProfile(currentUser);
+}
+
+export async function createSipProfile(input: CreateSipProfileInput, currentUser: ApiUser) {
+  return (await getRepository()).createSipProfile(input, currentUser);
+}
+
+export async function setActiveSipProfile(profileId: string, currentUser: ApiUser) {
+  return (await getRepository()).setActiveSipProfile(profileId, currentUser);
 }
 
 export async function getVoiceIdentity(user: ApiUser) {

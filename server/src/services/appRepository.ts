@@ -4,6 +4,12 @@ import { env } from "../config/env.js";
 import { supabaseAdmin } from "./supabaseAdmin.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { buildAiAssist } from "./aiAssistService.js";
+import {
+  createSipProfile as createStoredSipProfile,
+  getActiveSipProfile as getStoredActiveSipProfile,
+  getSipProfileWorkspaceState,
+  setActiveSipProfile as activateStoredSipProfile,
+} from "./sipProfileService.js";
 import { getVoiceFieldStatus, getVoiceProviderConfig } from "./voiceProviderService.js";
 import type {
   ApiCallActivityType,
@@ -14,12 +20,15 @@ import type {
   ApiLeadImportRecord,
   ApiLeadPriority,
   ApiLeadStatus,
+  ApiSipProfile,
   ApiUser,
   ApiUserRole,
   CreateCallLogInput,
+  CreateSipProfileInput,
   CreateUserInput,
   SaveDispositionInput,
   SignupInput,
+  StoredSipProfile,
   UploadResult,
   WorkspacePayload,
 } from "../types/index.js";
@@ -693,7 +702,32 @@ export async function syncAuthUserLink(email: string, authUserId: string) {
 
 export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePayload> {
   const { users, leads } = await buildLeadPayload(currentUser);
-  const voice = getVoiceProviderConfig();
+  const sipProfilesState = await getSipProfileWorkspaceState(currentUser, users);
+  const voice = sipProfilesState.activeStoredProfile
+    ? {
+        provider: "embedded-sip" as const,
+        available: true,
+        source: "profile" as const,
+        callerId: sipProfilesState.activeStoredProfile.callerId,
+        websocketUrl: sipProfilesState.activeStoredProfile.providerUrl,
+        sipDomain: sipProfilesState.activeStoredProfile.sipDomain,
+        username: sipProfilesState.activeStoredProfile.sipUsername,
+        profileId: sipProfilesState.activeStoredProfile.id,
+        profileLabel: sipProfilesState.activeStoredProfile.label,
+      }
+    : sipProfilesState.selectionRequired
+      ? {
+          provider: "embedded-sip" as const,
+          available: false,
+          source: "unconfigured" as const,
+          callerId: null,
+          websocketUrl: null,
+          sipDomain: null,
+          username: null,
+          profileId: null,
+          profileLabel: null,
+        }
+      : getVoiceProviderConfig();
 
   return {
     user: currentUser,
@@ -702,6 +736,9 @@ export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePaylo
     analytics: buildWorkspaceAnalytics(leads, users, currentUser),
     settings: buildSettingsStatus(),
     voice,
+    sipProfiles: sipProfilesState.profiles,
+    activeSipProfile: sipProfilesState.activeProfile,
+    sipProfileSelectionRequired: sipProfilesState.selectionRequired,
   };
 }
 
@@ -1562,6 +1599,29 @@ export async function updateWorkspaceUserStatus(
   }
 
   await insertAuditLog(currentUser.id, "user", userId, "status_update", { status });
+}
+
+export async function listSipProfiles(currentUser: ApiUser): Promise<ApiSipProfile[]> {
+  const { users } = await buildLeadPayload(currentUser);
+  return getSipProfileWorkspaceState(currentUser, users).then((state) => state.profiles);
+}
+
+export async function getActiveSipProfile(currentUser: ApiUser): Promise<StoredSipProfile | null> {
+  return getStoredActiveSipProfile(currentUser);
+}
+
+export async function createSipProfile(input: CreateSipProfileInput, currentUser: ApiUser) {
+  const profile = await createStoredSipProfile(input, currentUser);
+  await insertAuditLog(currentUser.id, "sip_profile", profile.id, "create", {
+    label: profile.label,
+    isShared: profile.isShared,
+  });
+  return profile;
+}
+
+export async function setActiveSipProfile(profileId: string, currentUser: ApiUser) {
+  await activateStoredSipProfile(profileId, currentUser);
+  await insertAuditLog(currentUser.id, "sip_profile", profileId, "activate", {});
 }
 
 export function getVoiceIdentity(user: ApiUser) {

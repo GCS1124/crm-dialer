@@ -21,7 +21,8 @@ Modern CRM-style preview dialer for remote sales teams, appointment setters, and
 - `POST /api/auth/signup` creates a new agent account in Supabase Auth and `app_users`
 - `POST /api/auth/login` signs users in through Supabase Auth and returns a Supabase access token for the app session
 - Admins can create additional users from the user management page
-- If you seed local users, control the initial password with `AUTH_SEED_PASSWORD`
+- If you seed auth users, new Supabase Auth accounts use `AUTH_SEED_PASSWORD` as the initial password
+- Existing Supabase Auth users keep their current password during `npm run seed:auth`; use `npm run seed:auth:reset-passwords --workspace server` only when you explicitly want to rotate them back to `AUTH_SEED_PASSWORD`
 - If the configured Supabase host is unavailable and `DATA_MODE=auto`, the backend falls back to a local development data store and issues local JWT sessions so the workspace still runs
 
 ## Folder structure

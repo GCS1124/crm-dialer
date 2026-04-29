@@ -20,12 +20,15 @@ import type {
   ApiLeadPriority,
   ApiLeadStatus,
   ApiNoteEntry,
+  ApiSipProfile,
   ApiUser,
   ApiUserRole,
   CreateCallLogInput,
+  CreateSipProfileInput,
   CreateUserInput,
   SaveDispositionInput,
   SignupInput,
+  StoredSipProfile,
   UploadResult,
   WorkspacePayload,
 } from "../types/index.js";
@@ -37,12 +40,35 @@ interface LocalUserRecord extends ApiUser {
   updatedAt: string;
 }
 
+interface LocalSipProfileRecord {
+  id: string;
+  label: string;
+  providerUrl: string;
+  sipDomain: string;
+  sipUsername: string;
+  sipPassword: string;
+  callerId: string;
+  ownerUserId: string | null;
+  isShared: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface LocalUserSipPreferenceRecord {
+  userId: string;
+  activeSipProfileId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface LocalStoreState {
   version: number;
   createdAt: string;
   updatedAt: string;
   users: LocalUserRecord[];
   leads: ApiLead[];
+  sipProfiles: LocalSipProfileRecord[];
+  userSipPreferences: LocalUserSipPreferenceRecord[];
 }
 
 const storePath = join(
@@ -91,6 +117,44 @@ function sanitizeIdentity(value: string) {
 
 function hashPassword(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function maskSecret(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.length <= 4) {
+    return "*".repeat(trimmed.length);
+  }
+
+  return `${"*".repeat(Math.max(0, trimmed.length - 4))}${trimmed.slice(-4)}`;
+}
+
+function normalizeSipDomain(value: string) {
+  return value
+    .trim()
+    .replace(/^(wss?|https?):\/\//i, "")
+    .replace(/\/+$/, "")
+    .replace(/\/.*$/, "");
+}
+
+function normalizeSipProviderUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  if (/^wss?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/^http/i, "ws");
+  }
+
+  return `wss://${normalizeSipDomain(trimmed)}/`;
 }
 
 function isConfiguredSupabaseUrl() {
@@ -599,12 +663,65 @@ function createInitialState(): LocalStoreState {
   const createdAt = nowIso();
 
   return {
-    version: 1,
+    version: 2,
     createdAt,
     updatedAt: createdAt,
     users,
     leads: createSeedLeads(users),
+    sipProfiles: [],
+    userSipPreferences: [],
   };
+}
+
+function ensureDefaultSipProfileRecord(state: LocalStoreState) {
+  const voice = getVoiceProviderConfig();
+  const sipPassword = env.SIP_PASSWORD.trim();
+
+  if (
+    !voice.available ||
+    !voice.websocketUrl ||
+    !voice.sipDomain ||
+    !voice.username ||
+    !voice.callerId ||
+    !sipPassword
+  ) {
+    return;
+  }
+
+  const normalizedUrl = normalizeSipProviderUrl(voice.websocketUrl);
+  const normalizedDomain = normalizeSipDomain(voice.sipDomain);
+  const existing = state.sipProfiles.find(
+    (profile) =>
+      profile.isShared &&
+      normalizeSipDomain(profile.sipDomain) === normalizedDomain &&
+      profile.sipUsername === voice.username,
+  );
+
+  if (existing) {
+    existing.label = "Unified Voice Shared";
+    existing.providerUrl = normalizedUrl;
+    existing.sipPassword = sipPassword;
+    existing.callerId = voice.callerId;
+    existing.ownerUserId = null;
+    existing.isShared = true;
+    existing.updatedAt = nowIso();
+    return;
+  }
+
+  const timestamp = nowIso();
+  state.sipProfiles.push({
+    id: randomUUID(),
+    label: "Unified Voice Shared",
+    providerUrl: normalizedUrl,
+    sipDomain: normalizedDomain,
+    sipUsername: voice.username,
+    sipPassword,
+    callerId: voice.callerId,
+    ownerUserId: null,
+    isShared: true,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
 }
 
 async function persistState(state: LocalStoreState) {
@@ -624,8 +741,13 @@ async function loadState() {
     cachedState = JSON.parse(raw) as LocalStoreState;
   } catch {
     cachedState = createInitialState();
-    await persistState(cachedState);
   }
+
+  cachedState.version = 2;
+  cachedState.sipProfiles ??= [];
+  cachedState.userSipPreferences ??= [];
+  ensureDefaultSipProfileRecord(cachedState);
+  await persistState(cachedState);
 
   return cachedState;
 }
@@ -660,6 +782,50 @@ function getUserRecordById(state: LocalStoreState, userId: string) {
 
 function getUserRecordByAuthId(state: LocalStoreState, authUserId: string) {
   return state.users.find((user) => user.authUserId === authUserId) ?? null;
+}
+
+function mapSipProfile(
+  profile: LocalSipProfileRecord,
+  activeProfileId: string | null,
+  usersById: Map<string, ApiUser>,
+): ApiSipProfile {
+  return {
+    id: profile.id,
+    label: profile.label,
+    providerUrl: profile.providerUrl,
+    sipDomain: profile.sipDomain,
+    sipUsername: profile.sipUsername,
+    callerId: profile.callerId,
+    ownerUserId: profile.ownerUserId,
+    ownerUserName: profile.ownerUserId ? (usersById.get(profile.ownerUserId)?.name ?? null) : null,
+    isShared: profile.isShared,
+    isActive: profile.id === activeProfileId,
+    passwordPreview: maskSecret(profile.sipPassword),
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
+  };
+}
+
+function mapStoredSipProfile(
+  profile: LocalSipProfileRecord,
+  activeProfileId: string | null,
+  usersById: Map<string, ApiUser>,
+): StoredSipProfile {
+  return {
+    ...mapSipProfile(profile, activeProfileId, usersById),
+    sipPassword: profile.sipPassword,
+  };
+}
+
+function getVisibleSipProfiles(state: LocalStoreState, currentUser: ApiUser) {
+  return state.sipProfiles.filter(
+    (profile) =>
+      currentUser.role === "admin" || profile.isShared || profile.ownerUserId === currentUser.id,
+  );
+}
+
+function getActiveSipProfilePreference(state: LocalStoreState, userId: string) {
+  return state.userSipPreferences.find((preference) => preference.userId === userId) ?? null;
 }
 
 function ensureLeadAccess(state: LocalStoreState, leadId: string, currentUser: ApiUser) {
@@ -778,6 +944,7 @@ export async function listUsers() {
 export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePayload> {
   const state = await getSnapshot();
   const users = mapUsers(state.users);
+  const usersById = new Map(users.map((user) => [user.id, user]));
   const leads =
     currentUser.role === "agent"
       ? state.leads.filter((lead) => lead.assignedAgentId === currentUser.id)
@@ -785,7 +952,42 @@ export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePaylo
   const scopedLeads = clone(leads).sort(
     (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
   );
-  const voice = getVoiceProviderConfig();
+  const visibleSipProfiles = getVisibleSipProfiles(state, currentUser);
+  const activePreference = getActiveSipProfilePreference(state, currentUser.id);
+  const activeSipProfileRecord =
+    visibleSipProfiles.find((profile) => profile.id === activePreference?.activeSipProfileId) ?? null;
+  const activeSipProfile = activeSipProfileRecord
+    ? mapSipProfile(activeSipProfileRecord, activeSipProfileRecord.id, usersById)
+    : null;
+  const sipProfiles = visibleSipProfiles.map((profile) =>
+    mapSipProfile(profile, activeSipProfileRecord?.id ?? null, usersById),
+  );
+  const sipProfileSelectionRequired = visibleSipProfiles.length > 0 && !activeSipProfileRecord;
+  const voice = activeSipProfileRecord
+    ? {
+        provider: "embedded-sip" as const,
+        available: true,
+        source: "profile" as const,
+        callerId: activeSipProfileRecord.callerId,
+        websocketUrl: activeSipProfileRecord.providerUrl,
+        sipDomain: activeSipProfileRecord.sipDomain,
+        username: activeSipProfileRecord.sipUsername,
+        profileId: activeSipProfileRecord.id,
+        profileLabel: activeSipProfileRecord.label,
+      }
+    : sipProfileSelectionRequired
+      ? {
+          provider: "embedded-sip" as const,
+          available: false,
+          source: "unconfigured" as const,
+          callerId: null,
+          websocketUrl: null,
+          sipDomain: null,
+          username: null,
+          profileId: null,
+          profileLabel: null,
+        }
+      : getVoiceProviderConfig();
 
   return {
     user: currentUser,
@@ -794,6 +996,9 @@ export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePaylo
     analytics: buildWorkspaceAnalytics(scopedLeads, users, currentUser),
     settings: await buildSettingsStatus(),
     voice,
+    sipProfiles,
+    activeSipProfile,
+    sipProfileSelectionRequired,
   };
 }
 
@@ -1236,6 +1441,93 @@ export async function updateWorkspaceUserStatus(
 
     user.status = status;
     user.updatedAt = nowIso();
+  });
+}
+
+export async function listSipProfiles(currentUser: ApiUser): Promise<ApiSipProfile[]> {
+  const workspace = await getWorkspace(currentUser);
+  return workspace.sipProfiles;
+}
+
+export async function getActiveSipProfile(currentUser: ApiUser): Promise<StoredSipProfile | null> {
+  const state = await getSnapshot();
+  const users = mapUsers(state.users);
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const visibleSipProfiles = getVisibleSipProfiles(state, currentUser);
+  const activePreference = getActiveSipProfilePreference(state, currentUser.id);
+  const activeProfile =
+    visibleSipProfiles.find((profile) => profile.id === activePreference?.activeSipProfileId) ?? null;
+
+  return activeProfile
+    ? mapStoredSipProfile(activeProfile, activeProfile.id, usersById)
+    : null;
+}
+
+export async function createSipProfile(input: CreateSipProfileInput, currentUser: ApiUser) {
+  return withWrite((state) => {
+    const normalizedLabel = input.label.trim();
+    const normalizedUrl = normalizeSipProviderUrl(input.providerUrl);
+    const normalizedDomain = normalizeSipDomain(input.sipDomain);
+    const normalizedUsername = input.sipUsername.trim();
+    const normalizedPassword = input.sipPassword.trim();
+    const normalizedCallerId = input.callerId.trim();
+    const isShared =
+      currentUser.role !== "agent" && input.isShared;
+
+    if (
+      !normalizedLabel ||
+      !normalizedUrl ||
+      !normalizedDomain ||
+      !normalizedUsername ||
+      !normalizedPassword ||
+      !normalizedCallerId
+    ) {
+      throw new Error("Every SIP profile field is required");
+    }
+
+    const timestamp = nowIso();
+    const profile: LocalSipProfileRecord = {
+      id: randomUUID(),
+      label: normalizedLabel,
+      providerUrl: normalizedUrl,
+      sipDomain: normalizedDomain,
+      sipUsername: normalizedUsername,
+      sipPassword: normalizedPassword,
+      callerId: normalizedCallerId,
+      ownerUserId: isShared ? null : currentUser.id,
+      isShared,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    state.sipProfiles.push(profile);
+
+    return mapSipProfile(profile, null, new Map([[currentUser.id, currentUser]]));
+  });
+}
+
+export async function setActiveSipProfile(profileId: string, currentUser: ApiUser) {
+  await withWrite((state) => {
+    const visibleSipProfiles = getVisibleSipProfiles(state, currentUser);
+    const profile = visibleSipProfiles.find((item) => item.id === profileId);
+    if (!profile) {
+      throw new Error("SIP profile not found");
+    }
+
+    const now = nowIso();
+    const existing = getActiveSipProfilePreference(state, currentUser.id);
+    if (existing) {
+      existing.activeSipProfileId = profileId;
+      existing.updatedAt = now;
+      return;
+    }
+
+    state.userSipPreferences.push({
+      userId: currentUser.id,
+      activeSipProfileId: profileId,
+      createdAt: now,
+      updatedAt: now,
+    });
   });
 }
 

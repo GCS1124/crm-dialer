@@ -1,5 +1,6 @@
 import { CheckCircle2, XCircle } from "lucide-react";
 
+import { SipProfileForm } from "../components/softphone/SipProfileForm";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { PageHeader } from "../components/shared/PageHeader";
@@ -23,7 +24,17 @@ function StatusRow({
 }
 
 export function SettingsPage() {
-  const { theme, setTheme, settingsStatus } = useAppState();
+  const {
+    activeSipProfile,
+    activateSipProfile,
+    createSipProfile,
+    currentUser,
+    settingsStatus,
+    sipProfiles,
+    theme,
+    setTheme,
+    voiceConfig,
+  } = useAppState();
   const missingVoiceFields = Object.entries(settingsStatus.voice.configuredFields)
     .filter(([, configured]) => !configured)
     .map(([field]) => field);
@@ -82,9 +93,9 @@ export function SettingsPage() {
         <div className="space-y-5">
           <Card className="space-y-3 p-5">
             <div>
-              <h3 className="text-[18px] font-semibold text-slate-900 dark:text-white">CRM softphone status</h3>
+              <h3 className="text-[18px] font-semibold text-slate-900 dark:text-white">CRM softphone</h3>
               <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                The inbuilt CRM softphone goes live when the SIP WebSocket, domain, credentials, and caller ID are ready.
+                The inbuilt CRM softphone uses the active SIP profile selected for this workspace user.
               </p>
             </div>
             <StatusRow label="WebSocket URL" value={settingsStatus.voice.configuredFields.websocketUrl} />
@@ -93,11 +104,17 @@ export function SettingsPage() {
             <StatusRow label="SIP password" value={settingsStatus.voice.configuredFields.sipPassword} />
             <StatusRow label="Outbound caller ID" value={settingsStatus.voice.configuredFields.callerId} />
             <div className="crm-subtle-card px-4 py-3 text-sm">
-              {settingsStatus.voice.available
-                ? `CRM softphone is live. Caller ID: ${settingsStatus.voice.callerId}`
-                : "The CRM softphone is not fully configured yet. The dialer stays in manual call logging mode until every required field is set."}
+              {activeSipProfile
+                ? `Active profile: ${activeSipProfile.label} · ${activeSipProfile.sipUsername}@${activeSipProfile.sipDomain} · Caller ID ${activeSipProfile.callerId}`
+                : settingsStatus.voice.available
+                  ? `Environment fallback is available. Caller ID: ${settingsStatus.voice.callerId}`
+                  : "No active SIP profile is selected yet. Browser calling stays blocked until you activate one."}
             </div>
-            {!settingsStatus.voice.available ? (
+            <div className="crm-subtle-card px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+              Active source: {voiceConfig.source}
+              {voiceConfig.profileLabel ? ` · ${voiceConfig.profileLabel}` : ""}
+            </div>
+            {!settingsStatus.voice.available && !activeSipProfile ? (
               <div className="crm-subtle-card px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                 Missing fields: {missingVoiceFields.join(", ")}
                 <div className="mt-2 font-mono text-xs text-slate-500 dark:text-slate-400">
@@ -105,6 +122,75 @@ export function SettingsPage() {
                 </div>
               </div>
             ) : null}
+          </Card>
+
+          <Card className="space-y-4 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-[18px] font-semibold text-slate-900 dark:text-white">Saved SIP profiles</h3>
+                <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
+                  Select which credential the browser softphone should use for this account.
+                </p>
+              </div>
+              <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-600">
+                {sipProfiles.length} profiles
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {sipProfiles.map((profile) => (
+                <div
+                  key={profile.id}
+                  className="crm-subtle-card flex items-center justify-between gap-4 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        {profile.label}
+                      </p>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                        {profile.isShared ? "Shared" : "Personal"}
+                      </span>
+                      {profile.isActive ? (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
+                          Active
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {profile.sipUsername}@{profile.sipDomain} · Caller ID {profile.callerId}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Password {profile.passwordPreview ?? "configured"}
+                      {profile.ownerUserName ? ` · Owner ${profile.ownerUserName}` : ""}
+                    </p>
+                  </div>
+                  <Button
+                    variant={profile.isActive ? "secondary" : "primary"}
+                    disabled={profile.isActive}
+                    onClick={() => void activateSipProfile(profile.id)}
+                  >
+                    {profile.isActive ? "Active" : "Use profile"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="space-y-4 p-5">
+            <div>
+              <h3 className="text-[18px] font-semibold text-slate-900 dark:text-white">Add SIP profile</h3>
+              <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
+                Save additional softphone credentials for this user or as a shared workspace profile.
+              </p>
+            </div>
+
+            <SipProfileForm
+              onSubmit={(input) => createSipProfile(input).then(() => undefined)}
+              submitLabel="Save profile"
+              allowShared={currentUser?.role !== "agent"}
+              initialShared={currentUser?.role !== "agent"}
+            />
           </Card>
 
           <Card className="space-y-3 p-5">

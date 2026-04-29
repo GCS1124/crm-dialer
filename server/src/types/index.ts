@@ -279,13 +279,46 @@ export interface WorkspaceAnalytics {
 
 export type VoiceProviderName = "embedded-sip";
 
+export interface ApiSipProfile {
+  id: string;
+  label: string;
+  providerUrl: string;
+  sipDomain: string;
+  sipUsername: string;
+  callerId: string;
+  ownerUserId: string | null;
+  ownerUserName: string | null;
+  isShared: boolean;
+  isActive: boolean;
+  passwordPreview: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoredSipProfile extends Omit<ApiSipProfile, "passwordPreview"> {
+  sipPassword: string;
+}
+
+export interface CreateSipProfileInput {
+  label: string;
+  providerUrl: string;
+  sipDomain: string;
+  sipUsername: string;
+  sipPassword: string;
+  callerId: string;
+  isShared: boolean;
+}
+
 export interface VoiceProviderConfig {
   provider: VoiceProviderName;
   available: boolean;
+  source: "profile" | "environment" | "unconfigured";
   callerId: string | null;
   websocketUrl: string | null;
   sipDomain: string | null;
   username: string | null;
+  profileId: string | null;
+  profileLabel: string | null;
 }
 
 export interface WorkspaceSettingsStatus {
@@ -320,6 +353,9 @@ export interface WorkspacePayload {
   analytics: WorkspaceAnalytics;
   settings: WorkspaceSettingsStatus;
   voice: VoiceProviderConfig;
+  sipProfiles: ApiSipProfile[];
+  activeSipProfile: ApiSipProfile | null;
+  sipProfileSelectionRequired: boolean;
 }
 
 export interface CreateUserInput {

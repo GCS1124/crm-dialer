@@ -10,6 +10,8 @@ interface AuthAdminListResponse {
   users: AuthAdminUser[];
 }
 
+const shouldResetPasswords = process.argv.includes("--reset-passwords");
+
 function getAdminHeaders() {
   return {
     apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -67,13 +69,21 @@ async function createAuthUser(email: string, name: string) {
 }
 
 async function updateAuthUser(userId: string) {
+  const payload: {
+    email_confirm: boolean;
+    password?: string;
+  } = {
+    email_confirm: true,
+  };
+
+  if (shouldResetPasswords) {
+    payload.password = env.AUTH_SEED_PASSWORD;
+  }
+
   const response = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
     method: "PUT",
     headers: getAdminHeaders(),
-    body: JSON.stringify({
-      password: env.AUTH_SEED_PASSWORD,
-      email_confirm: true,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -95,7 +105,11 @@ async function main() {
 
     if (existing) {
       await updateAuthUser(existing.id);
-      console.log(`Updated auth user: ${user.email}`);
+      console.log(
+        shouldResetPasswords
+          ? `Updated auth user and reset password: ${user.email}`
+          : `Updated auth user without changing password: ${user.email}`,
+      );
       continue;
     }
 
@@ -103,7 +117,11 @@ async function main() {
     console.log(`Created auth user: ${user.email}`);
   }
 
-  console.log("Auth user seeding complete.");
+  console.log(
+    shouldResetPasswords
+      ? "Auth user seeding complete with password resets."
+      : "Auth user seeding complete without resetting existing passwords.",
+  );
 }
 
 main().catch((error) => {

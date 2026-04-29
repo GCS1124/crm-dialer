@@ -7,6 +7,7 @@ import { dialerRouter } from "./dialer.js";
 import { leadsRouter } from "./leads.js";
 import { reportsRouter } from "./reports.js";
 import { runtimeRouter } from "./runtime.js";
+import { sipProfilesRouter } from "./sipProfiles.js";
 import { usersRouter } from "./users.js";
 import { workspaceRouter } from "./workspace.js";
 
@@ -21,3 +22,4 @@ apiRouter.use("/callbacks", callbacksRouter);
 apiRouter.use("/reports", reportsRouter);
 apiRouter.use("/users", usersRouter);
 apiRouter.use("/workspace", workspaceRouter);
+apiRouter.use("/sip-profiles", sipProfilesRouter);
