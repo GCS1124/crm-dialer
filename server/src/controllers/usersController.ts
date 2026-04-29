@@ -7,6 +7,7 @@ import {
   listUsers,
   updateWorkspaceUserStatus,
 } from "../services/repository.js";
+import type { CreateUserInput } from "../types/index.js";
 
 const inviteSchema = z.object({
   name: z.string().min(1),
@@ -54,7 +55,16 @@ export async function inviteUserController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid user payload" });
   }
 
-  const result = await createWorkspaceUser(parsed.data, currentUser);
+  const userInput: CreateUserInput = {
+    name: parsed.data.name,
+    email: parsed.data.email,
+    role: parsed.data.role,
+    team: parsed.data.team,
+    timezone: parsed.data.timezone,
+    title: parsed.data.title,
+  };
+
+  const result = await createWorkspaceUser(userInput, currentUser);
   return res.status(201).json(result);
 }
 

@@ -7,6 +7,7 @@ import {
   listSipProfiles,
   setActiveSipProfile,
 } from "../services/repository.js";
+import type { CreateSipProfileInput } from "../types/index.js";
 
 const createSipProfileSchema = z.object({
   label: z.string().min(1),
@@ -52,7 +53,17 @@ export async function createSipProfileController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid SIP profile payload" });
   }
 
-  const profile = await createSipProfile(parsed.data, currentUser);
+  const profileInput: CreateSipProfileInput = {
+    label: parsed.data.label,
+    providerUrl: parsed.data.providerUrl,
+    sipDomain: parsed.data.sipDomain,
+    sipUsername: parsed.data.sipUsername,
+    sipPassword: parsed.data.sipPassword,
+    callerId: parsed.data.callerId,
+    isShared: parsed.data.isShared,
+  };
+
+  const profile = await createSipProfile(profileInput, currentUser);
   return res.status(201).json({ profile });
 }
 

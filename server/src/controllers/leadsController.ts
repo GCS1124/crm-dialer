@@ -10,7 +10,7 @@ import {
   markLeadInvalid,
   updateLeadStatuses,
 } from "../services/repository.js";
-import type { ApiLeadPriority, ApiLeadStatus } from "../types/index.js";
+import type { ApiLeadImportRecord, ApiLeadPriority, ApiLeadStatus } from "../types/index.js";
 
 const leadStatusEnum = z.enum([
   "new",
@@ -92,7 +92,25 @@ export async function uploadLeadsController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid upload payload" });
   }
 
-  const result = await importLeads(parsed.data.records, currentUser, parsed.data.assignToUserId);
+  const records: ApiLeadImportRecord[] = parsed.data.records.map((record) => ({
+    fullName: record.fullName,
+    phone: record.phone,
+    altPhone: record.altPhone,
+    email: record.email,
+    company: record.company,
+    jobTitle: record.jobTitle,
+    location: record.location,
+    source: record.source,
+    interest: record.interest,
+    status: record.status,
+    notes: record.notes,
+    lastContacted: record.lastContacted,
+    assignedAgentName: record.assignedAgentName,
+    callbackTime: record.callbackTime,
+    priority: record.priority,
+  }));
+
+  const result = await importLeads(records, currentUser, parsed.data.assignToUserId);
   return res.status(201).json(result);
 }
 

@@ -8,6 +8,7 @@ import {
   listCallLogs,
   updateManualCallLog,
 } from "../services/repository.js";
+import type { CreateCallLogInput } from "../types/index.js";
 
 const callSchema = z.object({
   leadId: z.string(),
@@ -49,7 +50,17 @@ export async function createCallController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid call payload" });
   }
 
-  await createManualCallLog(parsed.data, currentUser);
+  const callInput: CreateCallLogInput = {
+    leadId: parsed.data.leadId,
+    callType: parsed.data.callType,
+    durationSeconds: parsed.data.durationSeconds,
+    status: parsed.data.status,
+    notes: parsed.data.notes,
+    callbackAt: parsed.data.callbackAt,
+    priority: parsed.data.priority,
+  };
+
+  await createManualCallLog(callInput, currentUser);
   return res.status(201).json({ success: true });
 }
 
@@ -64,7 +75,17 @@ export async function updateCallController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid call payload" });
   }
 
-  await updateManualCallLog(req.params.callId, parsed.data, currentUser);
+  const callInput: CreateCallLogInput = {
+    leadId: parsed.data.leadId,
+    callType: parsed.data.callType,
+    durationSeconds: parsed.data.durationSeconds,
+    status: parsed.data.status,
+    notes: parsed.data.notes,
+    callbackAt: parsed.data.callbackAt,
+    priority: parsed.data.priority,
+  };
+
+  await updateManualCallLog(req.params.callId, callInput, currentUser);
   return res.json({ success: true });
 }
 

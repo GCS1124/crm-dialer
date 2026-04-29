@@ -13,6 +13,7 @@ import {
   createVoiceSessionPayloadFromSipProfile,
   getVoiceProviderConfig,
 } from "../services/voiceProviderService.js";
+import type { SaveDispositionInput } from "../types/index.js";
 
 const dispositionSchema = z.object({
   leadId: z.string(),
@@ -92,6 +93,17 @@ export async function dispositionController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid post-call payload" });
   }
 
-  await saveDisposition(parsed.data, currentUser);
+  const dispositionInput: SaveDispositionInput = {
+    leadId: parsed.data.leadId,
+    disposition: parsed.data.disposition,
+    notes: parsed.data.notes,
+    callbackAt: parsed.data.callbackAt,
+    followUpPriority: parsed.data.followUpPriority,
+    outcomeSummary: parsed.data.outcomeSummary,
+    durationSeconds: parsed.data.durationSeconds,
+    recordingEnabled: parsed.data.recordingEnabled,
+  };
+
+  await saveDisposition(dispositionInput, currentUser);
   return res.json({ success: true });
 }
