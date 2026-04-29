@@ -1,4 +1,4 @@
-<file name=client/package.json path=/Users/mac/Library/CloudStorage/OneDrive-Personal/codes/projects/web/crm dialer/client>{
+{
   "name": "client",
   "version": "0.1.0",
   "scripts": {
@@ -18,4 +18,3 @@
     "eslint-config-next": "13.4.4"
   }
 }
-</file>
