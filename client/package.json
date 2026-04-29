@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "vercel-build": "npm run build",
     "start": "vite preview",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
