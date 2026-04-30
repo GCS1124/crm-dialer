@@ -64,9 +64,29 @@ interface AuthResponse {
 
 function normalizeDialTarget(phone: string, sipDomain: string, dialPrefix = "") {
   const normalizedPhone = phone.replace(/[^\d+]/g, "");
-  const withoutPlus = normalizedPhone.startsWith("+") ? normalizedPhone.slice(1) : normalizedPhone;
-  const userPart = `${dialPrefix}${withoutPlus}`.trim();
-  return `sip:${userPart}@${sipDomain}`;
+  const normalizedPrefix = dialPrefix.replace(/[^\d+]/g, "");
+
+  const phoneHasPlus = normalizedPhone.startsWith("+");
+  const prefixHasPlus = normalizedPrefix.startsWith("+");
+
+  const phoneDigits = phoneHasPlus ? normalizedPhone.slice(1) : normalizedPhone;
+  const prefixDigits = prefixHasPlus ? normalizedPrefix.slice(1) : normalizedPrefix;
+
+  const isLikelyPhoneNumber = phoneHasPlus || phoneDigits.length >= 8;
+  let digits = phoneDigits;
+  if (
+    isLikelyPhoneNumber &&
+    !phoneHasPlus &&
+    prefixDigits &&
+    !phoneDigits.startsWith(prefixDigits)
+  ) {
+    digits = `${prefixDigits}${phoneDigits}`;
+  }
+
+  const includePlus = phoneHasPlus || (prefixHasPlus && isLikelyPhoneNumber);
+  const userPart = includePlus ? `+${digits}` : digits;
+  const baseTarget = `sip:${userPart}@${sipDomain}`;
+  return digits.length >= 8 ? `${baseTarget};user=phone` : baseTarget;
 }
 
 function buildVoiceConfigSignature(session: VoiceSessionResponse, displayName: string) {
@@ -287,6 +307,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     startedAt: number;
     connected: boolean;
     userHangup: boolean;
+    sipStatusCode?: number | null;
+    sipReasonPhrase?: string | null;
   } | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const autoDialTimerRef = useRef<number | null>(null);
@@ -746,6 +768,40 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const client = new SimpleUser(response.websocketUrl, options);
       client.delegate = {
         onCallCreated: () => {
+          const session = (client as unknown as { session?: unknown }).session;
+          const sessionObject = session as Record<string, unknown> | undefined;
+
+          if (sessionObject && !("crmDialerPatched" in sessionObject)) {
+            sessionObject.crmDialerPatched = true;
+            const attachResponse = (inviteResponse: unknown) => {
+              const response = inviteResponse as { message?: { statusCode?: unknown; reasonPhrase?: unknown } };
+              const statusCode = response.message?.statusCode;
+              const reasonPhrase = response.message?.reasonPhrase;
+
+              const meta = activeCallMetaRef.current;
+              if (!meta) {
+                return;
+              }
+
+              meta.sipStatusCode = typeof statusCode === "number" ? statusCode : null;
+              meta.sipReasonPhrase = typeof reasonPhrase === "string" ? reasonPhrase : null;
+            };
+
+            const wrapSessionMethod = (methodName: "onReject" | "onRedirect") => {
+              const original = sessionObject[methodName];
+              if (typeof original !== "function") {
+                return;
+              }
+              sessionObject[methodName] = (inviteResponse: unknown) => {
+                attachResponse(inviteResponse);
+                return (original as (response: unknown) => unknown).call(sessionObject, inviteResponse);
+              };
+            };
+
+            wrapSessionMethod("onReject");
+            wrapSessionMethod("onRedirect");
+          }
+
           setCallError(null);
           setActiveCall((existing) =>
             existing ? { ...existing, status: "ringing" } : existing,
@@ -772,8 +828,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           }
 
           if (!meta.connected) {
+            const sipSummary = meta.sipStatusCode
+              ? `SIP ${meta.sipStatusCode}${meta.sipReasonPhrase ? ` ${meta.sipReasonPhrase}` : ""}`
+              : null;
             failCallSession(
-              "Call ended before connecting (rejected, busy, or no answer).",
+              sipSummary
+                ? `Call ended before connecting (${sipSummary}).`
+                : "Call ended before connecting (rejected, busy, or no answer).",
               meta.startedAt,
             );
             return;
