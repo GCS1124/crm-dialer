@@ -1,13 +1,10 @@
 import {
-  ArrowRightLeft,
-  Bell,
   Building2,
   CalendarClock,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
-  FileText,
   FileUp,
   Grid2x2,
   History,
@@ -451,13 +448,6 @@ export function PreviewDialerPage() {
     { id: "timeline", label: "Timeline", icon: Clock3 },
   ];
 
-  const statusTone =
-    currentUser.status === "online"
-      ? "bg-emerald-500"
-      : currentUser.status === "away"
-        ? "bg-amber-500"
-        : "bg-slate-400";
-
   const contactDetails = [
     { icon: Mail, label: "Email", value: activeLead.email || "--" },
     { icon: Phone, label: "Phone", value: formatPhone(activeLead.phone) },
@@ -467,34 +457,11 @@ export function PreviewDialerPage() {
     { icon: History, label: "Last updated", value: formatDateTime(activeLead.updatedAt) },
   ];
 
-  const customFields = [
-    { label: "Lead score", value: `${activeLead.leadScore}%` },
-    { label: "Interest", value: activeLead.interest || "--" },
-    { label: "Source", value: activeLead.source || "--" },
-    { label: "Job title", value: activeLead.jobTitle || "--" },
-    { label: "Timezone", value: activeLead.timezone },
-    { label: "Callback", value: formatDateTime(activeLead.callbackTime) },
-  ];
-
-  const noteSpotlight = noteEntries[0];
-
   return (
     <div className="space-y-4 text-sm">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-[#eef4fb] shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-            >
-              <span className={cn("h-2.5 w-2.5 rounded-full", statusTone)} />
-              {currentUser.status === "online"
-                ? "Online"
-                : currentUser.status === "away"
-                  ? "Away"
-                  : "Offline"}
-              <ChevronDown size={14} />
-            </button>
             <button
               type="button"
               onClick={handleDialPadToggle}
@@ -507,27 +474,6 @@ export function PreviewDialerPage() {
           </div>
 
           <div className="flex items-center gap-2 text-slate-500 dark:text-slate-300">
-            <button
-              type="button"
-              className="rounded-full p-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Search"
-            >
-              <Search size={16} />
-            </button>
-            <button
-              type="button"
-              className="rounded-full p-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Notifications"
-            >
-              <Bell size={16} />
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-            >
-              Calls
-              <ChevronDown size={14} />
-            </button>
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
               {currentUser.avatar}
             </div>
@@ -688,7 +634,6 @@ export function PreviewDialerPage() {
             <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
               <div className="flex items-center justify-between">
                 <h2 className="text-[14px] font-semibold text-slate-900 dark:text-white">Calls</h2>
-                <ChevronDown size={16} className="text-slate-400" />
               </div>
             </div>
 
@@ -974,12 +919,6 @@ export function PreviewDialerPage() {
                   </button>
                   <button
                     type="button"
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  >
-                    <ArrowRightLeft size={15} />
-                  </button>
-                  <button
-                    type="button"
                     onClick={activeCall?.status === "on_hold" ? resumeCall : holdCall}
                     disabled={!activeCall || manualCallActive}
                     className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
@@ -1057,7 +996,7 @@ export function PreviewDialerPage() {
 
               {workspaceTab === "about" ? (
                 <>
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_300px]">
+                  <div className="grid gap-4">
                     <DetailSection title="Contact details">
                       <div className="space-y-4">
                         {contactDetails.map((item) => (
@@ -1075,123 +1014,6 @@ export function PreviewDialerPage() {
                             </div>
                           </div>
                         ))}
-                      </div>
-                    </DetailSection>
-
-                    <DetailSection title="Custom fields">
-                      <div className="space-y-5">
-                        {customFields.map((item) => (
-                          <div key={item.label}>
-                            <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                              {item.label}
-                            </p>
-                            <p className="mt-1 text-[13px] text-slate-900 dark:text-white">
-                              {item.value}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </DetailSection>
-
-                    <DetailSection title={`Contact notes ${noteEntries.length ? noteEntries.length : ""}`.trim()}>
-                      <div className="space-y-4">
-                        <div className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
-                          <button
-                            type="button"
-                            className="rounded-md bg-white px-4 py-1.5 text-[12px] font-medium text-slate-800 shadow-sm dark:bg-slate-900 dark:text-white"
-                          >
-                            Contact
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-md px-4 py-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-300"
-                          >
-                            Activity
-                          </button>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <p className="text-[13px] font-medium text-slate-900 dark:text-white">
-                            Contact notes
-                          </p>
-                          <button
-                            type="button"
-                            className="text-[12px] font-medium text-surface-700 dark:text-cyan-300"
-                          >
-                            + Add note
-                          </button>
-                        </div>
-
-                        {noteSpotlight ? (
-                          <div className="rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-slate-700 dark:border-amber-500/20 dark:bg-amber-950/20 dark:text-slate-200">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="font-semibold text-slate-900 dark:text-white">
-                                {noteSpotlight.authorName}
-                              </p>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                {formatDateTime(noteSpotlight.createdAt)}
-                              </p>
-                            </div>
-                            <p className="mt-2 leading-5">{noteSpotlight.body}</p>
-                          </div>
-                        ) : (
-                          <div className="rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                            No notes yet.
-                          </div>
-                        )}
-
-                        <div className="border-t border-slate-200 pt-4 dark:border-slate-800">
-                          <div className="flex items-center justify-between">
-                            <p className="text-[13px] font-medium text-slate-900 dark:text-white">
-                              Contact tags
-                            </p>
-                            <button
-                              type="button"
-                              className="text-[12px] font-medium text-surface-700 dark:text-cyan-300"
-                            >
-                              + Add tag
-                            </button>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {activeLead.tags.length ? (
-                              activeLead.tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="rounded-md bg-slate-100 px-2 py-1 text-[11px] text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                >
-                                  {tag}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-[12px] text-slate-500 dark:text-slate-400">
-                                No tags
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="border-t border-slate-200 pt-4 dark:border-slate-800">
-                          <p className="text-[13px] font-medium text-slate-900 dark:text-white">
-                            Recent activity
-                          </p>
-                          <div className="mt-3 space-y-3">
-                            {activeLead.activities.slice(0, 4).map((activity) => (
-                              <div key={activity.id} className="flex items-start gap-3">
-                                <div className="mt-0.5 rounded-full bg-sky-100 p-2 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
-                                  <FileText size={13} />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="truncate text-[13px] text-slate-900 dark:text-white">
-                                    {activity.title}
-                                  </p>
-                                  <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                                    {formatDateTime(activity.createdAt)}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
                       </div>
                     </DetailSection>
                   </div>
