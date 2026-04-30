@@ -74,16 +74,19 @@ function normalizeDialTarget(phone: string, sipDomain: string, dialPrefix = "") 
 
   const isLikelyPhoneNumber = phoneHasPlus || phoneDigits.length >= 8;
   let digits = phoneDigits;
-  if (
-    isLikelyPhoneNumber &&
-    !phoneHasPlus &&
-    prefixDigits &&
-    !phoneDigits.startsWith(prefixDigits)
-  ) {
-    digits = `${prefixDigits}${phoneDigits}`;
+  if (isLikelyPhoneNumber && prefixDigits) {
+    const shouldPrefix =
+      prefixDigits.length === 1
+        ? phoneHasPlus || !(digits.length === 11 && digits.startsWith(prefixDigits))
+        : !digits.startsWith(prefixDigits);
+
+    if (shouldPrefix) {
+      digits = `${prefixDigits}${digits}`;
+    }
   }
 
-  const includePlus = phoneHasPlus || (prefixHasPlus && isLikelyPhoneNumber);
+  const includePlus =
+    isLikelyPhoneNumber && (prefixHasPlus || (phoneHasPlus && !prefixDigits));
   const userPart = includePlus ? `+${digits}` : digits;
   const baseTarget = `sip:${userPart}@${sipDomain}`;
   return digits.length >= 8 ? `${baseTarget};user=phone` : baseTarget;
