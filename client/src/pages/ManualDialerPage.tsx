@@ -109,7 +109,7 @@ export function ManualDialerPage() {
     }
 
     if (dialDigits.startsWith(callingCode)) {
-      return `+${dialDigits}`;
+      return dialDigits;
     }
 
     const expectedLength = selectedCountry?.nationalNumberLength ?? null;
@@ -117,7 +117,7 @@ export function ManualDialerPage() {
       return dialDigits;
     }
 
-    return `+${callingCode}${dialDigits}`;
+    return `${callingCode}${dialDigits}`;
   }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
