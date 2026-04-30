@@ -282,7 +282,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [wrapUpDurationSeconds, setWrapUpDurationSeconds] = useState(0);
   const voiceClientRef = useRef<SimpleUser | null>(null);
   const voiceConfigSignatureRef = useRef<string | null>(null);
-  const activeCallMetaRef = useRef<{ leadId: string | null; startedAt: number } | null>(null);
+  const activeCallMetaRef = useRef<{
+    leadId: string | null;
+    startedAt: number;
+    connected: boolean;
+    userHangup: boolean;
+  } | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const autoDialTimerRef = useRef<number | null>(null);
   const lastAutoDialLeadIdRef = useRef<string | null>(null);
@@ -747,6 +752,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           );
         },
         onCallAnswered: () => {
+          const meta = activeCallMetaRef.current;
+          if (meta) {
+            meta.connected = true;
+          }
           setCallError(null);
           setActiveCall((existing) =>
             existing ? { ...existing, status: "connected" } : existing,
@@ -757,6 +766,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           if (!meta) {
             return;
           }
+          if (meta.userHangup) {
+            finishCallSession(meta.leadId, meta.startedAt);
+            return;
+          }
+
+          if (!meta.connected) {
+            failCallSession(
+              "Call ended before connecting (rejected, busy, or no answer).",
+              meta.startedAt,
+            );
+            return;
+          }
+
           finishCallSession(meta.leadId, meta.startedAt);
         },
         onServerDisconnect: (error) => {
@@ -987,6 +1009,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     activeCallMetaRef.current = {
       leadId: callLeadId,
       startedAt,
+      connected: false,
+      userHangup: false,
     };
     setActiveCall({
       leadId: callLeadId,
@@ -1081,6 +1105,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     if (voiceClientRef.current) {
+      const meta = activeCallMetaRef.current;
+      if (meta && meta.startedAt === activeCall.startedAt) {
+        meta.userHangup = true;
+      }
       void voiceClientRef.current.hangup().catch(() => undefined);
       return;
     }

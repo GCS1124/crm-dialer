@@ -6,6 +6,35 @@ import { Card } from "../components/shared/Card";
 import { PageHeader } from "../components/shared/PageHeader";
 import { useAppState } from "../hooks/useAppState";
 
+function normalize(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function isPlaceholder(value: string, placeholders: string[]) {
+  const normalized = normalize(value);
+  return !normalized || placeholders.includes(normalized) || normalized.startsWith("replace-with-");
+}
+
+function isWebsocketUrl(value: string) {
+  const trimmed = value.trim();
+  return /^(wss?:)\/\//i.test(trimmed) && !isPlaceholder(trimmed, ["wss://sip.example.com"]);
+}
+
+function isSipDomain(value: string) {
+  const trimmed = value.trim();
+  return Boolean(trimmed) && !isPlaceholder(trimmed, ["sip.example.com"]) && !trimmed.includes(" ");
+}
+
+function isSipUsername(value: string) {
+  const trimmed = value.trim();
+  return Boolean(trimmed) && !isPlaceholder(trimmed, ["agent1001", "your-sip-username"]);
+}
+
+function isCallerId(value: string) {
+  const trimmed = value.trim();
+  return Boolean(trimmed) && trimmed !== "+10000000000";
+}
+
 function StatusRow({
   label,
   value,
@@ -35,9 +64,20 @@ export function SettingsPage() {
     setTheme,
     voiceConfig,
   } = useAppState();
-  const missingVoiceFields = Object.entries(settingsStatus.voice.configuredFields)
+  const voiceFieldStatus = activeSipProfile
+    ? {
+        websocketUrl: isWebsocketUrl(activeSipProfile.providerUrl),
+        sipDomain: isSipDomain(activeSipProfile.sipDomain),
+        sipUsername: isSipUsername(activeSipProfile.sipUsername),
+        sipPassword: Boolean(activeSipProfile.passwordPreview),
+        callerId: isCallerId(activeSipProfile.callerId),
+      }
+    : settingsStatus.voice.configuredFields;
+  const missingVoiceFields = Object.entries(voiceFieldStatus)
     .filter(([, configured]) => !configured)
     .map(([field]) => field);
+  const voiceReady = Object.values(voiceFieldStatus).every(Boolean);
+  const showMissingVoiceFields = !voiceReady && (activeSipProfile ? true : sipProfiles.length === 0);
 
   return (
     <div className="space-y-5">
@@ -98,11 +138,11 @@ export function SettingsPage() {
                 The inbuilt CRM softphone uses the active SIP profile selected for this workspace user.
               </p>
             </div>
-            <StatusRow label="WebSocket URL" value={settingsStatus.voice.configuredFields.websocketUrl} />
-            <StatusRow label="SIP domain" value={settingsStatus.voice.configuredFields.sipDomain} />
-            <StatusRow label="SIP username" value={settingsStatus.voice.configuredFields.sipUsername} />
-            <StatusRow label="SIP password" value={settingsStatus.voice.configuredFields.sipPassword} />
-            <StatusRow label="Outbound caller ID" value={settingsStatus.voice.configuredFields.callerId} />
+            <StatusRow label="WebSocket URL" value={voiceFieldStatus.websocketUrl} />
+            <StatusRow label="SIP domain" value={voiceFieldStatus.sipDomain} />
+            <StatusRow label="SIP username" value={voiceFieldStatus.sipUsername} />
+            <StatusRow label="SIP password" value={voiceFieldStatus.sipPassword} />
+            <StatusRow label="Outbound caller ID" value={voiceFieldStatus.callerId} />
             <div className="crm-subtle-card px-4 py-3 text-sm">
               {activeSipProfile
                 ? `Active profile: ${activeSipProfile.label} · ${activeSipProfile.sipUsername}@${activeSipProfile.sipDomain} · Caller ID ${activeSipProfile.callerId}`
@@ -114,7 +154,7 @@ export function SettingsPage() {
               Active source: {voiceConfig.source}
               {voiceConfig.profileLabel ? ` · ${voiceConfig.profileLabel}` : ""}
             </div>
-            {!settingsStatus.voice.available && !activeSipProfile ? (
+            {showMissingVoiceFields ? (
               <div className="crm-subtle-card px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                 Missing fields: {missingVoiceFields.join(", ")}
                 <div className="mt-2 font-mono text-xs text-slate-500 dark:text-slate-400">
