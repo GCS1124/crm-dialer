@@ -56,6 +56,8 @@ export function ManualDialerPage() {
     const stored = localStorage.getItem("crm-dialer-manual-dial-country");
     if (stored && (stored === "US" || stored === "IN" || stored === "custom")) {
       setCountryId(stored);
+    } else if (currentUser?.timezone?.includes("Kolkata")) {
+      setCountryId("IN");
     } else if (voiceConfig.callerId) {
       const callerDigits = voiceConfig.callerId.replace(/[^\d]/g, "");
       if (callerDigits.startsWith("1")) {
@@ -63,8 +65,6 @@ export function ManualDialerPage() {
       } else if (callerDigits.startsWith("91")) {
         setCountryId("IN");
       }
-    } else if (currentUser?.timezone?.includes("Kolkata")) {
-      setCountryId("IN");
     }
 
     const storedCallingCode = localStorage.getItem("crm-dialer-manual-dial-custom-code");
