@@ -573,12 +573,6 @@ export function PreviewDialerPage() {
 
         <div className="grid xl:min-h-[calc(100vh-245px)] xl:grid-cols-[290px_minmax(0,1fr)]">
           <aside className="border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-            <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <h2 className="text-[14px] font-semibold text-slate-900 dark:text-white">Calls</h2>
-              </div>
-            </div>
-
             <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/40">
               <div className="flex items-center justify-between text-[12px] font-medium text-slate-700 dark:text-slate-200">
                 <span>Active</span>
