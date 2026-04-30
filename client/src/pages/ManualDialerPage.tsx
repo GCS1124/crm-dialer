@@ -1,4 +1,4 @@
-import { ArrowLeft, PhoneCall, PhoneOff, Pause, Mic, Settings2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Globe, PhoneCall, PhoneOff, Pause, Mic, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -14,6 +14,13 @@ const dialPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
 function sanitizeDialPadInput(value: string) {
   return value.replace(/[^\d+*#]/g, "");
 }
+
+const manualDialCountries = [
+  { id: "US", label: "United States", callingCode: "1", nationalNumberLength: 10 },
+  { id: "IN", label: "India", callingCode: "91", nationalNumberLength: 10 },
+] as const;
+
+type ManualDialCountryId = (typeof manualDialCountries)[number]["id"] | "custom";
 
 export function ManualDialerPage() {
   const navigate = useNavigate();
@@ -33,10 +40,85 @@ export function ManualDialerPage() {
   const [dialPadValue, setDialPadValue] = useState("");
   const [dialPadMessage, setDialPadMessage] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [countryId, setCountryId] = useState<ManualDialCountryId | "">("");
+  const [customCallingCode, setCustomCallingCode] = useState("");
 
   const dialTarget = useMemo(() => sanitizeDialPadInput(dialPadValue), [dialPadValue]);
+  const dialDigits = useMemo(() => dialTarget.replace(/[^\d]/g, ""), [dialTarget]);
   const callInProgress = Boolean(activeCall);
   const manualCallActive = activeCall?.status === "manual";
+  const selectedCountry = useMemo(
+    () => manualDialCountries.find((country) => country.id === countryId) ?? null,
+    [countryId],
+  );
+
+  useEffect(() => {
+    const stored = localStorage.getItem("crm-dialer-manual-dial-country");
+    if (stored && (stored === "US" || stored === "IN" || stored === "custom")) {
+      setCountryId(stored);
+    } else if (voiceConfig.callerId) {
+      const callerDigits = voiceConfig.callerId.replace(/[^\d]/g, "");
+      if (callerDigits.startsWith("1")) {
+        setCountryId("US");
+      } else if (callerDigits.startsWith("91")) {
+        setCountryId("IN");
+      }
+    } else if (currentUser?.timezone?.includes("Kolkata")) {
+      setCountryId("IN");
+    }
+
+    const storedCallingCode = localStorage.getItem("crm-dialer-manual-dial-custom-code");
+    if (storedCallingCode) {
+      setCustomCallingCode(storedCallingCode.replace(/[^\d]/g, ""));
+    }
+  }, [currentUser?.timezone, voiceConfig.callerId]);
+
+  useEffect(() => {
+    if (!countryId) {
+      return;
+    }
+    localStorage.setItem("crm-dialer-manual-dial-country", countryId);
+  }, [countryId]);
+
+  useEffect(() => {
+    localStorage.setItem("crm-dialer-manual-dial-custom-code", customCallingCode);
+  }, [customCallingCode]);
+
+  const callingCode = useMemo(() => {
+    if (countryId === "custom") {
+      return customCallingCode.replace(/[^\d]/g, "");
+    }
+    return selectedCountry?.callingCode ?? "";
+  }, [countryId, customCallingCode, selectedCountry]);
+
+  const formattedDialNumber = useMemo(() => {
+    if (!dialTarget) {
+      return "";
+    }
+
+    if (dialTarget.startsWith("+")) {
+      return dialTarget;
+    }
+
+    if (dialDigits.length <= 6) {
+      return dialDigits;
+    }
+
+    if (!callingCode) {
+      return dialDigits;
+    }
+
+    if (dialDigits.startsWith(callingCode)) {
+      return dialDigits;
+    }
+
+    const expectedLength = selectedCountry?.nationalNumberLength ?? null;
+    if (expectedLength && dialDigits.length !== expectedLength) {
+      return dialDigits;
+    }
+
+    return `${callingCode}${dialDigits}`;
+  }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
     if (!activeCall) {
@@ -80,12 +162,23 @@ export function ManualDialerPage() {
       return;
     }
 
+    if (!dialTarget.startsWith("+") && dialDigits.length > 6 && !callingCode) {
+      setDialPadMessage("Select a country before calling this number.");
+      return;
+    }
+
+    const callNumber = formattedDialNumber || dialDigits;
+    if (!callNumber) {
+      setDialPadMessage("Enter a valid phone number.");
+      return;
+    }
+
     setDialPadMessage("");
     try {
       await startCall({
-        phone: dialTarget,
+        phone: callNumber,
         leadId: null,
-        displayName: dialTarget,
+        displayName: callNumber,
       });
     } catch (error) {
       setDialPadMessage(error instanceof Error ? error.message : "Unable to start that call.");
@@ -161,13 +254,78 @@ export function ManualDialerPage() {
                 </Badge>
               </div>
 
-              <input
-                value={dialPadValue}
-                onChange={(event) => handleDialPadInputChange(event.target.value)}
-                placeholder="Enter number"
-                inputMode="tel"
-                className="crm-input text-[13px] tracking-[0.18em]"
-              />
+              <div className="grid gap-2 sm:grid-cols-[180px_minmax(0,1fr)]">
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                    Country
+                  </span>
+                  <div className="relative">
+                    <Globe
+                      size={14}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <select
+                      value={countryId}
+                      onChange={(event) => {
+                        setDialPadMessage("");
+                        setCountryId(event.target.value as ManualDialCountryId | "");
+                      }}
+                      className="crm-input appearance-none py-2 pl-9 pr-9 text-[12px]"
+                      disabled={callInProgress}
+                    >
+                      <option value="">Select</option>
+                      {manualDialCountries.map((country) => (
+                        <option key={country.id} value={country.id}>
+                          {country.label} (+{country.callingCode})
+                        </option>
+                      ))}
+                      <option value="custom">Custom...</option>
+                    </select>
+                    <ChevronDown
+                      size={14}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                  </div>
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                    Phone number
+                  </span>
+                  <input
+                    value={dialPadValue}
+                    onChange={(event) => handleDialPadInputChange(event.target.value)}
+                    placeholder="Enter number"
+                    inputMode="tel"
+                    className="crm-input text-[13px] tracking-[0.18em]"
+                  />
+                </label>
+              </div>
+
+              {countryId === "custom" ? (
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                    Custom calling code
+                  </span>
+                  <input
+                    value={customCallingCode}
+                    onChange={(event) => {
+                      setDialPadMessage("");
+                      setCustomCallingCode(event.target.value.replace(/[^\d]/g, ""));
+                    }}
+                    placeholder="e.g. 1, 44, 91"
+                    inputMode="numeric"
+                    className="crm-input py-2 text-[12px]"
+                    disabled={callInProgress}
+                  />
+                </label>
+              ) : null}
+
+              {formattedDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Dialing as: {formattedDialNumber}
+                </p>
+              ) : null}
 
               <div className="grid grid-cols-3 gap-2">
                 {dialPadKeys.map((key) => (
@@ -326,4 +484,3 @@ export function ManualDialerPage() {
     </div>
   );
 }
-
