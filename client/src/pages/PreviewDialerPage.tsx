@@ -45,7 +45,7 @@ import {
   getPriorityTone,
   toDatetimeLocalInput,
 } from "../lib/utils";
-import type { LeadPriority, QueueFilter } from "../types";
+import type { LeadPriority } from "../types";
 
 type WorkspaceTab = "about" | "notes" | "history" | "timeline";
 const dialPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
@@ -102,48 +102,6 @@ function sanitizeDialPadInput(value: string) {
   return value.replace(/[^\d+*#]/g, "");
 }
 
-function getLeadProductivityHint(lead: {
-  status: string;
-  callbackTime: string | null;
-  leadScore: number;
-  priority: string;
-  callHistory: Array<unknown>;
-  notesHistory: Array<unknown>;
-}) {
-  if (lead.callbackTime && new Date(lead.callbackTime).getTime() < Date.now()) {
-    return {
-      title: "Callback overdue",
-      detail: "This record should be reworked now before it slips any further.",
-    };
-  }
-
-  if (lead.status === "qualified" && lead.leadScore >= 75) {
-    return {
-      title: "Push for appointment",
-      detail: "Intent is strong enough to move this call toward booking.",
-    };
-  }
-
-  if (!lead.callHistory.length) {
-    return {
-      title: "First touch pending",
-      detail: "Use the preview, open with relevance, and capture context on wrap-up.",
-    };
-  }
-
-  if (!lead.notesHistory.length) {
-    return {
-      title: "Context is thin",
-      detail: "Add a sharp note after the next touch so the queue stays usable.",
-    };
-  }
-
-  return {
-    title: "Advance the opportunity",
-    detail: "Use the last outcome and move this lead to its next concrete step.",
-  };
-}
-
 function DetailSection({
   title,
   action,
@@ -175,16 +133,10 @@ export function PreviewDialerPage() {
   const {
     currentUser,
     leads,
-    analytics,
     queueSort,
     queueFilter,
-    setQueueSort,
     setQueueFilter,
-    autoDialEnabled,
-    autoDialDelaySeconds,
-    autoDialCountdown,
     setAutoDialEnabled,
-    setAutoDialDelaySeconds,
     currentLeadId,
     activeCall,
     wrapUpLeadId,
@@ -245,15 +197,6 @@ export function PreviewDialerPage() {
       ),
     );
   }, [queueSearch, queuedLeads]);
-  const recommendedLead = analytics.recommendedLeads.find((lead) => lead.leadId === activeLead?.id);
-  const duplicateInsight = analytics.duplicateInsights.find((group) =>
-    activeLead ? group.leadIds.includes(activeLead.id) : false,
-  );
-  const productivityHint = activeLead
-    ? recommendedLead
-      ? { title: recommendedLead.reason, detail: recommendedLead.suggestedAction }
-      : getLeadProductivityHint(activeLead)
-    : null;
   const activeCallLead = activeCall?.leadId
     ? leads.find((lead) => lead.id === activeCall.leadId) ?? null
     : null;
@@ -677,30 +620,6 @@ export function PreviewDialerPage() {
                     className="crm-input py-2 pl-9 text-[12px]"
                   />
                 </label>
-                <select
-                  value={queueSort}
-                  onChange={(event) =>
-                    setQueueSort(event.target.value as "priority" | "newest" | "callback_due")
-                  }
-                  className="crm-input py-2 text-[12px]"
-                >
-                  <option value="priority">Priority</option>
-                  <option value="newest">Newest</option>
-                  <option value="callback_due">Callback due</option>
-                </select>
-                <select
-                  value={queueFilter}
-                  onChange={(event) => setQueueFilter(event.target.value as QueueFilter)}
-                  className="crm-input py-2 text-[12px]"
-                >
-                  <option value="all">All active</option>
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="callback_due">Callback due</option>
-                  <option value="follow_up">Follow up</option>
-                  <option value="qualified">Qualified</option>
-                  <option value="appointment_booked">Appointment booked</option>
-                </select>
                 <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
                   <FileUp size={14} />
                   {uploading ? "Importing..." : "Import file"}
@@ -748,14 +667,6 @@ export function PreviewDialerPage() {
               )}
             </div>
 
-            <button
-              type="button"
-              className="flex w-full items-center justify-between border-t border-slate-200 px-4 py-3 text-[12px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
-            >
-              <span>Recent Calls</span>
-              <ChevronRight size={14} />
-            </button>
-
             <div className="space-y-3 border-t border-slate-200 px-4 py-4 dark:border-slate-800">
               <div className="grid grid-cols-3 gap-2">
                 <Button size="sm" variant="secondary" onClick={previousLead} disabled={Boolean(wrapUpLeadId)}>
@@ -794,52 +705,6 @@ export function PreviewDialerPage() {
                   <XCircle size={14} />
                   Invalid
                 </Button>
-              </div>
-
-              <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                    Auto dial
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setAutoDialEnabled(!autoDialEnabled)}
-                    disabled={Boolean(activeCall)}
-                    className={cn(
-                      "relative h-6 w-11 rounded-full transition",
-                      autoDialEnabled ? "bg-surface-700" : "bg-slate-300 dark:bg-slate-700",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "absolute top-1 h-4 w-4 rounded-full bg-white transition",
-                        autoDialEnabled ? "left-6" : "left-1",
-                      )}
-                    />
-                  </button>
-                </div>
-                <div className="mt-3 grid grid-cols-[1fr_92px] gap-2">
-                  <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                    {activeCall
-                      ? "Paused during call"
-                      : autoDialEnabled && autoDialCountdown !== null
-                        ? `Next in ${autoDialCountdown}s`
-                        : autoDialEnabled
-                          ? "Queue armed"
-                          : "Off"}
-                  </div>
-                  <select
-                    value={autoDialDelaySeconds}
-                    onChange={(event) => setAutoDialDelaySeconds(Number(event.target.value))}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-2 text-[12px] outline-none focus:border-surface-600 dark:border-slate-700 dark:bg-slate-950"
-                    disabled={!autoDialEnabled || Boolean(activeCall)}
-                  >
-                    <option value={2}>2 sec</option>
-                    <option value={3}>3 sec</option>
-                    <option value={5}>5 sec</option>
-                    <option value={8}>8 sec</option>
-                  </select>
-                </div>
               </div>
 
               {callbackPanelOpen ? (
@@ -1017,118 +882,6 @@ export function PreviewDialerPage() {
                     </DetailSection>
                   </div>
 
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-                    <DetailSection
-                      title="Satisfaction"
-                      action={
-                        <button
-                          type="button"
-                          className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                        >
-                          View reporting
-                        </button>
-                      }
-                    >
-                      {callEntries.length ? (
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full text-left text-[12px]">
-                            <thead className="text-slate-500 dark:text-slate-400">
-                              <tr>
-                                <th className="pb-3 pr-4 font-medium">Rating</th>
-                                <th className="pb-3 pr-4 font-medium">Comment</th>
-                                <th className="pb-3 pr-4 font-medium">Agent</th>
-                                <th className="pb-3 font-medium">Date</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {callEntries.slice(0, 5).map((call) => (
-                                <tr
-                                  key={call.id}
-                                  className="border-t border-slate-200 dark:border-slate-800"
-                                >
-                                  <td className="py-3 pr-4">
-                                    <Badge className={getDispositionTone(call.disposition)}>
-                                      {call.disposition}
-                                    </Badge>
-                                  </td>
-                                  <td className="py-3 pr-4 text-slate-700 dark:text-slate-300">
-                                    {call.outcomeSummary || call.notes || "No summary"}
-                                  </td>
-                                  <td className="py-3 pr-4 text-slate-700 dark:text-slate-300">
-                                    {call.agentName}
-                                  </td>
-                                  <td className="py-3 text-slate-500 dark:text-slate-400">
-                                    {formatDateTime(call.createdAt)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <p className="text-[12px] text-slate-500 dark:text-slate-400">No calls yet.</p>
-                      )}
-                    </DetailSection>
-
-                    <DetailSection title="Queue overview">
-                      <div className="space-y-4">
-                        {productivityHint ? (
-                          <div className="rounded-[10px] border border-sky-200 bg-sky-50 px-3 py-3 dark:border-sky-500/20 dark:bg-sky-950/20">
-                            <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
-                              {productivityHint.title}
-                            </p>
-                            <p className="mt-1 text-[11px] leading-5 text-slate-600 dark:text-slate-300">
-                              {productivityHint.detail}
-                            </p>
-                          </div>
-                        ) : null}
-                        {duplicateInsight ? (
-                          <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3 dark:border-amber-500/20 dark:bg-amber-950/20">
-                            <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
-                              Duplicate watch
-                            </p>
-                            <p className="mt-1 text-[11px] leading-5 text-slate-600 dark:text-slate-300">
-                              {duplicateInsight.count} records share this {duplicateInsight.matchType}.
-                            </p>
-                          </div>
-                        ) : null}
-                        <div>
-                          <p className="text-[12px] text-slate-500 dark:text-slate-400">Assigned</p>
-                          <p className="mt-1 text-[13px] text-slate-900 dark:text-white">
-                            {activeLead.assignedAgentName}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[12px] text-slate-500 dark:text-slate-400">Last contacted</p>
-                          <p className="mt-1 text-[13px] text-slate-900 dark:text-white">
-                            {formatDateTime(activeLead.lastContacted)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[12px] text-slate-500 dark:text-slate-400">Next callback</p>
-                          <p className="mt-1 text-[13px] text-slate-900 dark:text-white">
-                            {formatDateTime(activeLead.callbackTime)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[12px] text-slate-500 dark:text-slate-400">Auto dial</p>
-                          <p className="mt-1 text-[13px] text-slate-900 dark:text-white">
-                            {autoDialEnabled
-                              ? autoDialCountdown !== null
-                                ? `Next in ${autoDialCountdown}s`
-                                : `${autoDialDelaySeconds}s delay`
-                              : "Off"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[12px] text-slate-500 dark:text-slate-400">Lead score</p>
-                          <p className="mt-1 text-[13px] text-slate-900 dark:text-white">
-                            {activeLead.leadScore} / 100
-                          </p>
-                        </div>
-                      </div>
-                    </DetailSection>
-                  </div>
                 </>
               ) : null}
 
