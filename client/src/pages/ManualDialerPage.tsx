@@ -109,7 +109,7 @@ export function ManualDialerPage() {
     }
 
     if (dialDigits.startsWith(callingCode)) {
-      return dialDigits;
+      return `+${dialDigits}`;
     }
 
     const expectedLength = selectedCountry?.nationalNumberLength ?? null;
@@ -117,7 +117,7 @@ export function ManualDialerPage() {
       return dialDigits;
     }
 
-    return `${callingCode}${dialDigits}`;
+    return `+${callingCode}${dialDigits}`;
   }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
@@ -260,10 +260,6 @@ export function ManualDialerPage() {
                     Country
                   </span>
                   <div className="relative">
-                    <Globe
-                      size={14}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                    />
                     <select
                       value={countryId}
                       onChange={(event) => {
