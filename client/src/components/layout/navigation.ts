@@ -1,6 +1,7 @@
 import {
   BarChart3,
   BellRing,
+  Grid2x2,
   LayoutDashboard,
   ListChecks,
   PhoneCall,
@@ -23,6 +24,7 @@ export const navigationItems: NavigationItem[] = [
   { label: "Activity", href: "/dashboard", icon: LayoutDashboard, roles: ["admin", "team_leader", "agent"] },
   { label: "Calls", href: "/calls", icon: ListChecks, roles: ["admin", "team_leader", "agent"] },
   { label: "Dialer", href: "/dialer", icon: PhoneCall, roles: ["admin", "team_leader", "agent"] },
+  { label: "Manual", href: "/manual-dialer", icon: Grid2x2, roles: ["admin", "team_leader", "agent"] },
   { label: "Follow-up", href: "/callbacks", icon: BellRing, roles: ["admin", "team_leader", "agent"] },
   { label: "Contacts", href: "/leads", icon: ShieldCheck, roles: ["admin", "team_leader"] },
   { label: "Reports", href: "/reports", icon: BarChart3, roles: ["admin", "team_leader"] },

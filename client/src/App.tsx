@@ -22,6 +22,11 @@ const PreviewDialerPage = lazy(() =>
     default: module.PreviewDialerPage,
   })),
 );
+const ManualDialerPage = lazy(() =>
+  import("./pages/ManualDialerPage").then((module) => ({
+    default: module.ManualDialerPage,
+  })),
+);
 const CallbacksPage = lazy(() =>
   import("./pages/CallbacksPage").then((module) => ({ default: module.CallbacksPage })),
 );
@@ -161,6 +166,14 @@ export default function App() {
             element={
               <LazyPage>
                 <PreviewDialerPage />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="/manual-dialer"
+            element={
+              <LazyPage>
+                <ManualDialerPage />
               </LazyPage>
             }
           />

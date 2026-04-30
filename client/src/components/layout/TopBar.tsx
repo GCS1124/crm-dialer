@@ -10,6 +10,7 @@ const titles: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/calls": "Calls",
   "/dialer": "Dialer",
+  "/manual-dialer": "Manual Dialer",
   "/callbacks": "Follow-Ups",
   "/leads": "Contacts",
   "/reports": "Reports",

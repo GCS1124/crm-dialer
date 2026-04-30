@@ -9,7 +9,7 @@ import { TopBar } from "./TopBar";
 
 export function AppShell() {
   const location = useLocation();
-  const isDialerView = location.pathname === "/dialer";
+  const isDialerView = location.pathname === "/dialer" || location.pathname === "/manual-dialer";
   const {
     sipProfileSelectionRequired,
     workspaceError,
