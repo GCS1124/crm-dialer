@@ -436,7 +436,6 @@ export function PreviewDialerPage() {
       />
     );
   }
-
   const workspaceTabs: Array<{
     id: WorkspaceTab;
     label: string;
