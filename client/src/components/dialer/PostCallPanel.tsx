@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type { CallDisposition, LeadPriority, SaveDispositionInput } from "../../types";
+import { buildDispositionOutcomeSummary, isPostCallSaveDisabled } from "./postCallPanelState";
 import { Button } from "../shared/Button";
 import { Card } from "../shared/Card";
 
@@ -38,7 +39,6 @@ export function PostCallPanel({
   const [notes, setNotes] = useState("");
   const [callbackAt, setCallbackAt] = useState("");
   const [followUpPriority, setFollowUpPriority] = useState<LeadPriority>("Medium");
-  const [outcomeSummary, setOutcomeSummary] = useState("");
   const [saving, setSaving] = useState(false);
   const needsCallbackTime =
     disposition === "Call Back Later" ||
@@ -51,7 +51,6 @@ export function PostCallPanel({
       setNotes("");
       setCallbackAt("");
       setFollowUpPriority("Medium");
-      setOutcomeSummary("");
     }
   }, [open, leadName]);
 
@@ -143,13 +142,13 @@ export function PostCallPanel({
                 notes,
                 callbackAt: callbackAt ? new Date(callbackAt).toISOString() : "",
                 followUpPriority,
-                outcomeSummary,
+                outcomeSummary: buildDispositionOutcomeSummary(disposition, notes, leadName),
               });
             } finally {
               setSaving(false);
             }
           }}
-          disabled={!outcomeSummary.trim() || (needsCallbackTime && !callbackAt) || saving}
+          disabled={isPostCallSaveDisabled({ saving, needsCallbackTime, callbackAt })}
         >
           {saving ? "Saving..." : "Save disposition & load next lead"}
         </Button>
