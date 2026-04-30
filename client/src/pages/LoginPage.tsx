@@ -39,7 +39,7 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [runtimeError, setRuntimeError] = useState("");
-  const googleSignInAvailable = hasSupabaseBrowserConfig && runtime?.dataMode === "supabase";
+  const googleSignInAvailable = hasSupabaseBrowserConfig && runtime?.dataMode === "supabase"&& false;
 
   useEffect(() => {
     let active = true;
