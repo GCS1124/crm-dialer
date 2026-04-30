@@ -607,7 +607,7 @@ export function PreviewDialerPage() {
                 <span>Queue ({queuedLeads.length})</span>
                 <ChevronDown size={14} />
               </div>
-              <div className="mt-3 grid gap-2">
+              <div className="mt-3 grid gap-5">
                 <label className="relative">
                   <Search
                     size={14}
