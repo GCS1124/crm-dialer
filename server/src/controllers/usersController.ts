@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   createWorkspaceUser,
+  deleteWorkspaceUser,
   getUserById,
   listUsers,
   updateWorkspaceUserStatus,
@@ -81,4 +82,14 @@ export async function updateUserStatusController(req: Request, res: Response) {
 
   await updateWorkspaceUserStatus(req.params.userId, parsed.data.status, currentUser);
   return res.json({ success: true });
+}
+
+export async function deleteUserController(req: Request, res: Response) {
+  const currentUser = await getCurrentUser(res);
+  if (!currentUser) {
+    return res.status(401).json({ message: "Missing session context" });
+  }
+
+  await deleteWorkspaceUser(req.params.userId, currentUser);
+  return res.status(204).send();
 }

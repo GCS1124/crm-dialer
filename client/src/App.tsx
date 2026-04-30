@@ -8,8 +8,8 @@ import { useAppState } from "./hooks/useAppState";
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then((module) => ({ default: module.LoginPage })),
 );
-const SignupPage = lazy(() =>
-  import("./pages/SignupPage").then((module) => ({ default: module.SignupPage })),
+const AdminPage = lazy(() =>
+  import("./pages/AdminPage").then((module) => ({ default: module.AdminPage })),
 );
 const DashboardPage = lazy(() =>
   import("./pages/DashboardPage").then((module) => ({ default: module.DashboardPage })),
@@ -37,11 +37,6 @@ const LeadManagementPage = lazy(() =>
 );
 const ReportsPage = lazy(() =>
   import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })),
-);
-const UserManagementPage = lazy(() =>
-  import("./pages/UserManagementPage").then((module) => ({
-    default: module.UserManagementPage,
-  })),
 );
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })),
@@ -134,13 +129,7 @@ export default function App() {
         <Route
           path="/signup"
           element={
-            currentUser ? (
-              <Navigate to="/dashboard" replace />
-            ) : (
-              <LazyPage>
-                <SignupPage />
-              </LazyPage>
-            )
+            <Navigate to={currentUser ? "/dashboard" : "/login"} replace />
           }
         />
         <Route element={<ProtectedRoute />}>
@@ -206,15 +195,16 @@ export default function App() {
             }
           />
           <Route
-            path="/users"
+            path="/admin"
             element={
               <AdminRoute>
                 <LazyPage>
-                  <UserManagementPage />
+                  <AdminPage />
                 </LazyPage>
               </AdminRoute>
             }
           />
+          <Route path="/users" element={<Navigate to="/admin" replace />} />
           <Route
             path="/settings"
             element={

@@ -8,6 +8,7 @@ import type {
   ApiUser,
   CreateSipProfileInput,
   StoredSipProfile,
+  UpdateSipProfileInput,
 } from "../types/index.js";
 
 interface DbSipProfileRow {
@@ -29,6 +30,11 @@ interface DbUserSipPreferenceRow {
   active_sip_profile_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface UserSipAssignment {
+  profileId: string | null;
+  profileLabel: string | null;
 }
 
 function handleError(error: PostgrestError | Error | null, message: string): never {
@@ -170,6 +176,33 @@ async function fetchSipProfileRowById(profileId: string) {
   return (data as DbSipProfileRow | null) ?? null;
 }
 
+async function fetchSipProfileRowsByIds(profileIds: string[]) {
+  if (!profileIds.length) {
+    return [] as DbSipProfileRow[];
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("sip_profiles")
+    .select(
+      "id, label, provider_url, sip_domain, sip_username, sip_password, caller_id, owner_user_id, is_shared, created_at, updated_at",
+    )
+    .in("id", profileIds);
+
+  if (error) {
+    handleError(error, "Unable to load SIP profile assignments");
+  }
+
+  return (data ?? []) as DbSipProfileRow[];
+}
+
+async function clearUserPreference(userId: string) {
+  const { error } = await supabaseAdmin.from("user_sip_preferences").delete().eq("user_id", userId);
+
+  if (error) {
+    handleError(error, "Unable to clear the active SIP profile");
+  }
+}
+
 export async function ensureDefaultSipProfileSeed() {
   const voice = getVoiceProviderConfig();
   const sipPassword = env.SIP_PASSWORD.trim();
@@ -272,16 +305,23 @@ export async function getSipProfileWorkspaceState(
     fetchVisibleSipProfileRows(currentUser),
     fetchUserPreference(currentUser.id),
   ]);
-
-  const activeRow =
-    profileRows.find((row) => row.id === preference?.active_sip_profile_id) ?? null;
-  const activeId = activeRow?.id ?? null;
+  const activeAssignedRow = preference?.active_sip_profile_id
+    ? await fetchSipProfileRowById(preference.active_sip_profile_id)
+    : null;
+  const activeVisibleRow =
+    profileRows.find((row) => row.id === activeAssignedRow?.id) ?? null;
+  const activeId = activeAssignedRow?.id ?? null;
 
   return {
     profiles: profileRows.map((row) => mapApiSipProfile(row, activeId, usersById)),
-    activeProfile: activeRow ? mapApiSipProfile(activeRow, activeId, usersById) : null,
-    activeStoredProfile: activeRow ? mapStoredSipProfile(activeRow, activeId, usersById) : null,
-    selectionRequired: profileRows.length > 0 && !activeRow,
+    activeProfile:
+      activeVisibleRow && canAccessProfile(activeVisibleRow, currentUser)
+        ? mapApiSipProfile(activeVisibleRow, activeId, usersById)
+        : null,
+    activeStoredProfile: activeAssignedRow
+      ? mapStoredSipProfile(activeAssignedRow, activeId, usersById)
+      : null,
+    selectionRequired: currentUser.role === "admin" && profileRows.length > 0 && !activeAssignedRow,
   };
 }
 
@@ -296,6 +336,50 @@ export async function listSipProfiles(
 export async function getActiveSipProfile(currentUser: ApiUser) {
   const state = await getSipProfileWorkspaceState(currentUser);
   return state.activeStoredProfile;
+}
+
+export async function getUserSipAssignmentMap(users: ApiUser[]) {
+  if (!users.length) {
+    return new Map<string, UserSipAssignment>();
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("user_sip_preferences")
+    .select("user_id, active_sip_profile_id, created_at, updated_at")
+    .in("user_id", users.map((user) => user.id))
+    .not("active_sip_profile_id", "is", null);
+
+  if (error) {
+    handleError(error, "Unable to load user SIP assignments");
+  }
+
+  const preferenceRows = (data ?? []) as DbUserSipPreferenceRow[];
+  const profileIds = Array.from(
+    new Set(
+      preferenceRows
+        .map((row) => row.active_sip_profile_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  const profilesById = new Map(
+    (await fetchSipProfileRowsByIds(profileIds)).map((row) => [row.id, row]),
+  );
+
+  return new Map<string, UserSipAssignment>(
+    preferenceRows.map((row) => {
+      const profile = row.active_sip_profile_id
+        ? profilesById.get(row.active_sip_profile_id) ?? null
+        : null;
+
+      return [
+        row.user_id,
+        {
+          profileId: profile?.id ?? null,
+          profileLabel: profile?.label ?? null,
+        },
+      ];
+    }),
+  );
 }
 
 export async function createSipProfile(input: CreateSipProfileInput, currentUser: ApiUser) {
@@ -364,5 +448,115 @@ export async function setActiveSipProfile(profileId: string, currentUser: ApiUse
 
   if (error) {
     handleError(error, "Unable to activate SIP profile");
+  }
+}
+
+export async function updateSipProfile(
+  profileId: string,
+  input: UpdateSipProfileInput,
+  currentUser: ApiUser,
+) {
+  const existing = await fetchSipProfileRowById(profileId);
+  if (!existing || !canAccessProfile(existing, currentUser)) {
+    throw new Error("SIP profile not found");
+  }
+
+  const normalizedLabel = input.label.trim();
+  const normalizedUrl = normalizeSipProviderUrl(input.providerUrl);
+  const normalizedDomain = normalizeSipDomain(input.sipDomain);
+  const normalizedUsername = input.sipUsername.trim();
+  const normalizedPassword = input.sipPassword?.trim() ?? "";
+  const normalizedCallerId = input.callerId.trim();
+  const isShared = canManageSharedProfiles(currentUser) ? input.isShared : existing.is_shared;
+
+  if (
+    !normalizedLabel ||
+    !normalizedUrl ||
+    !normalizedDomain ||
+    !normalizedUsername ||
+    !normalizedCallerId
+  ) {
+    throw new Error("Every SIP profile field except password is required");
+  }
+
+  const updatePayload: Record<string, string | boolean | null> = {
+    label: normalizedLabel,
+    provider_url: normalizedUrl,
+    sip_domain: normalizedDomain,
+    sip_username: normalizedUsername,
+    caller_id: normalizedCallerId,
+    is_shared: isShared,
+    owner_user_id: isShared ? null : existing.owner_user_id,
+  };
+
+  if (normalizedPassword) {
+    updatePayload.sip_password = normalizedPassword;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("sip_profiles")
+    .update(updatePayload)
+    .eq("id", profileId)
+    .select(
+      "id, label, provider_url, sip_domain, sip_username, sip_password, caller_id, owner_user_id, is_shared, created_at, updated_at",
+    )
+    .single();
+
+  if (error) {
+    handleError(error, "Unable to update SIP profile");
+  }
+
+  const row = data as DbSipProfileRow;
+  const usersById = new Map([[currentUser.id, currentUser]]);
+  return mapApiSipProfile(row, profileId, usersById);
+}
+
+export async function deleteSipProfile(profileId: string, currentUser: ApiUser) {
+  const existing = await fetchSipProfileRowById(profileId);
+  if (!existing || !canAccessProfile(existing, currentUser)) {
+    throw new Error("SIP profile not found");
+  }
+
+  const { error: preferenceError } = await supabaseAdmin
+    .from("user_sip_preferences")
+    .delete()
+    .eq("active_sip_profile_id", profileId);
+
+  if (preferenceError) {
+    handleError(preferenceError, "Unable to clear SIP profile assignments");
+  }
+
+  const { error } = await supabaseAdmin.from("sip_profiles").delete().eq("id", profileId);
+
+  if (error) {
+    handleError(error, "Unable to delete SIP profile");
+  }
+}
+
+export async function assignSipProfileToUser(userId: string, profileId: string | null) {
+  if (!profileId) {
+    await clearUserPreference(userId);
+    return;
+  }
+
+  const row = await fetchSipProfileRowById(profileId);
+  if (!row) {
+    throw new Error("SIP profile not found");
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabaseAdmin.from("user_sip_preferences").upsert(
+    {
+      user_id: userId,
+      active_sip_profile_id: profileId,
+      updated_at: now,
+    },
+    {
+      onConflict: "user_id",
+    },
+  );
+
+  if (error) {
+    handleError(error, "Unable to assign SIP profile");
   }
 }

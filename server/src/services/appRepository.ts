@@ -5,12 +5,17 @@ import { supabaseAdmin } from "./supabaseAdmin.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { buildAiAssist } from "./aiAssistService.js";
 import {
+  assignSipProfileToUser as assignStoredSipProfileToUser,
   createSipProfile as createStoredSipProfile,
+  deleteSipProfile as deleteStoredSipProfile,
   getActiveSipProfile as getStoredActiveSipProfile,
   getSipProfileWorkspaceState,
+  getUserSipAssignmentMap,
   setActiveSipProfile as activateStoredSipProfile,
+  updateSipProfile as updateStoredSipProfile,
 } from "./sipProfileService.js";
 import { getVoiceFieldStatus, getVoiceProviderConfig } from "./voiceProviderService.js";
+import { buildSipWorkspaceExposure, canManageWorkspaceAdmin } from "./workspaceAccessService.js";
 import type {
   ApiCallActivityType,
   ApiCallDisposition,
@@ -29,6 +34,7 @@ import type {
   SaveDispositionInput,
   SignupInput,
   StoredSipProfile,
+  UpdateSipProfileInput,
   UploadResult,
   WorkspacePayload,
 } from "../types/index.js";
@@ -278,7 +284,7 @@ function buildSettingsStatus() {
 
   return {
     authMode: "supabase" as const,
-    signupEnabled: true,
+    signupEnabled: false,
     importFormats: ["csv", "xlsx", "xls"],
     voice: {
       provider: voice.provider,
@@ -611,6 +617,19 @@ async function buildLeadPayload(currentUser?: ApiUser) {
   return { users, leads };
 }
 
+async function attachSipAssignments(users: ApiUser[]) {
+  const assignmentMap = await getUserSipAssignmentMap(users);
+  return users.map((user) => {
+    const assignment = assignmentMap.get(user.id);
+
+    return {
+      ...user,
+      activeSipProfileId: assignment?.profileId ?? null,
+      activeSipProfileLabel: assignment?.profileLabel ?? null,
+    };
+  });
+}
+
 async function createAuthAndWorkspaceUser(input: {
   name: string;
   email: string;
@@ -704,8 +723,16 @@ export async function syncAuthUserLink(email: string, authUserId: string) {
 }
 
 export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePayload> {
-  const { users, leads } = await buildLeadPayload(currentUser);
+  const { users: baseUsers, leads } = await buildLeadPayload(currentUser);
+  const users = canManageWorkspaceAdmin(currentUser)
+    ? await attachSipAssignments(baseUsers)
+    : baseUsers;
   const sipProfilesState = await getSipProfileWorkspaceState(currentUser, users);
+  const sipExposure = buildSipWorkspaceExposure(currentUser, {
+    profiles: sipProfilesState.profiles,
+    activeProfile: sipProfilesState.activeProfile,
+    selectionRequired: sipProfilesState.selectionRequired,
+  });
   const voice = sipProfilesState.activeStoredProfile
     ? {
         provider: "embedded-sip" as const,
@@ -739,14 +766,14 @@ export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePaylo
     analytics: buildWorkspaceAnalytics(leads, users, currentUser),
     settings: buildSettingsStatus(),
     voice,
-    sipProfiles: sipProfilesState.profiles,
-    activeSipProfile: sipProfilesState.activeProfile,
-    sipProfileSelectionRequired: sipProfilesState.selectionRequired,
+    sipProfiles: sipExposure.profiles,
+    activeSipProfile: sipExposure.activeProfile,
+    sipProfileSelectionRequired: sipExposure.selectionRequired,
   };
 }
 
 export async function listUsers() {
-  return fetchUsers();
+  return attachSipAssignments(await fetchUsers());
 }
 
 export async function listLeads(currentUser: ApiUser) {
@@ -1574,17 +1601,8 @@ export async function createWorkspaceUser(input: CreateUserInput, currentUser: A
 }
 
 export async function createPublicSignup(input: SignupInput) {
-  const createdUser = await createAuthAndWorkspaceUser({
-    name: input.name,
-    email: input.email,
-    password: input.password,
-    role: "agent",
-    team: input.team,
-    timezone: input.timezone,
-    title: input.title,
-  });
-
-  return createdUser;
+  void input;
+  throw new Error("Account creation is managed by an administrator.");
 }
 
 export async function updateWorkspaceUserStatus(
@@ -1606,7 +1624,12 @@ export async function updateWorkspaceUserStatus(
 
 export async function listSipProfiles(currentUser: ApiUser): Promise<ApiSipProfile[]> {
   const { users } = await buildLeadPayload(currentUser);
-  return getSipProfileWorkspaceState(currentUser, users).then((state) => state.profiles);
+  const state = await getSipProfileWorkspaceState(currentUser, users);
+  return buildSipWorkspaceExposure(currentUser, {
+    profiles: state.profiles,
+    activeProfile: state.activeProfile,
+    selectionRequired: state.selectionRequired,
+  }).profiles;
 }
 
 export async function getActiveSipProfile(currentUser: ApiUser): Promise<StoredSipProfile | null> {
@@ -1625,6 +1648,111 @@ export async function createSipProfile(input: CreateSipProfileInput, currentUser
 export async function setActiveSipProfile(profileId: string, currentUser: ApiUser) {
   await activateStoredSipProfile(profileId, currentUser);
   await insertAuditLog(currentUser.id, "sip_profile", profileId, "activate", {});
+}
+
+export async function updateSipProfile(
+  profileId: string,
+  input: UpdateSipProfileInput,
+  currentUser: ApiUser,
+) {
+  const profile = await updateStoredSipProfile(profileId, input, currentUser);
+  await insertAuditLog(currentUser.id, "sip_profile", profileId, "update", {
+    label: profile.label,
+    isShared: profile.isShared,
+  });
+  return profile;
+}
+
+export async function deleteSipProfile(profileId: string, currentUser: ApiUser) {
+  await deleteStoredSipProfile(profileId, currentUser);
+  await insertAuditLog(currentUser.id, "sip_profile", profileId, "delete", {});
+}
+
+export async function assignSipProfileToUser(
+  userId: string,
+  profileId: string | null,
+  currentUser: ApiUser,
+) {
+  const targetUser = await getAppUserRowById(userId);
+  if (!targetUser) {
+    throw new Error("User not found");
+  }
+
+  await assignStoredSipProfileToUser(userId, profileId);
+  await insertAuditLog(currentUser.id, "user", userId, "sip_assignment", {
+    profileId,
+  });
+}
+
+export async function deleteWorkspaceUser(userId: string, currentUser: ApiUser) {
+  if (userId === currentUser.id) {
+    throw new Error("You cannot delete your own admin account.");
+  }
+
+  const user = await getAppUserRowById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const now = new Date().toISOString();
+  const { data: ownedProfiles, error: ownedProfilesError } = await supabaseAdmin
+    .from("sip_profiles")
+    .select("id")
+    .eq("owner_user_id", userId);
+
+  if (ownedProfilesError) {
+    handleError(ownedProfilesError, "Unable to inspect user SIP profiles");
+  }
+
+  const ownedProfileIds = ((ownedProfiles ?? []) as Array<{ id: string }>).map((row) => row.id);
+
+  const mutationTasks: Array<PromiseLike<{ error: PostgrestError | null }>> = [
+    supabaseAdmin
+      .from("leads")
+      .update({ assigned_agent: null, updated_at: now })
+      .eq("assigned_agent", userId),
+    supabaseAdmin.from("call_logs").update({ agent_id: null }).eq("agent_id", userId),
+    supabaseAdmin.from("lead_notes").update({ author_id: null }).eq("author_id", userId),
+    supabaseAdmin.from("activity_logs").update({ actor_id: null }).eq("actor_id", userId),
+    supabaseAdmin.from("callbacks").update({ owner_id: null, updated_at: now }).eq("owner_id", userId),
+    supabaseAdmin.from("appointments").update({ owner_id: null }).eq("owner_id", userId),
+    supabaseAdmin.from("audit_logs").update({ actor_id: null }).eq("actor_id", userId),
+    supabaseAdmin.from("user_sip_preferences").delete().eq("user_id", userId),
+  ];
+
+  if (ownedProfileIds.length) {
+    mutationTasks.push(
+      supabaseAdmin
+        .from("user_sip_preferences")
+        .delete()
+        .in("active_sip_profile_id", ownedProfileIds),
+    );
+    mutationTasks.push(
+      supabaseAdmin.from("sip_profiles").delete().in("id", ownedProfileIds),
+    );
+  }
+
+  const results = await Promise.all(mutationTasks);
+  const failedResult = results.find((result) => result.error);
+  if (failedResult?.error) {
+    handleError(failedResult.error, "Unable to clean up user dependencies");
+  }
+
+  const { error: deleteUserError } = await supabaseAdmin.from("app_users").delete().eq("id", userId);
+  if (deleteUserError) {
+    handleError(deleteUserError, "Unable to delete workspace user");
+  }
+
+  if (user.auth_user_id) {
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(user.auth_user_id, false);
+    if (error) {
+      handleError(error, "Workspace user deleted, but auth deletion failed");
+    }
+  }
+
+  await insertAuditLog(currentUser.id, "user", userId, "delete_user", {
+    email: user.email,
+  });
 }
 
 export function getVoiceIdentity(user: ApiUser) {

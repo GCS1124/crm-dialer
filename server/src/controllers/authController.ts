@@ -1,14 +1,8 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 
-import {
-  createPublicSignup,
-  getUserByEmail,
-  getUserById,
-  syncAuthUserLink,
-} from "../services/repository.js";
+import { getUserByEmail, getUserById, syncAuthUserLink } from "../services/repository.js";
 import { signInWithPassword } from "../services/supabaseAuthService.js";
-import type { SignupInput } from "../types/index.js";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -71,30 +65,7 @@ export async function signupController(req: Request, res: Response) {
   if (!parsed.success) {
     return res.status(400).json({ message: "Invalid signup payload" });
   }
-
-  const signupInput: SignupInput = {
-    name: parsed.data.name,
-    email: parsed.data.email,
-    password: parsed.data.password,
-    team: parsed.data.team,
-    timezone: parsed.data.timezone,
-    title: parsed.data.title,
-  };
-
-  const user = await createPublicSignup(signupInput);
-  const authResult = await signInWithPassword(signupInput.email, signupInput.password);
-  if (!authResult.success) {
-    return res.status(201).json({
-      token: null,
-      refreshToken: null,
-      user,
-      message: "Account created. Sign in once to establish an authenticated session.",
-    });
-  }
-
-  return res.status(201).json({
-    token: authResult.data.access_token,
-    refreshToken: authResult.data.refresh_token,
-    user,
+  return res.status(403).json({
+    message: "Account creation is managed by an administrator.",
   });
 }

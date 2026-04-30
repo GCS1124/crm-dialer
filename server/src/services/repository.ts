@@ -13,6 +13,7 @@ import type {
   SaveDispositionInput,
   SignupInput,
   StoredSipProfile,
+  UpdateSipProfileInput,
 } from "../types/index.js";
 
 async function getRepository() {
@@ -136,6 +137,10 @@ export async function updateWorkspaceUserStatus(
   return (await getRepository()).updateWorkspaceUserStatus(userId, status, currentUser);
 }
 
+export async function deleteWorkspaceUser(userId: string, currentUser: ApiUser) {
+  return (await getRepository()).deleteWorkspaceUser(userId, currentUser);
+}
+
 export async function listSipProfiles(currentUser: ApiUser): Promise<ApiSipProfile[]> {
   return (await getRepository()).listSipProfiles(currentUser);
 }
@@ -150,6 +155,26 @@ export async function createSipProfile(input: CreateSipProfileInput, currentUser
 
 export async function setActiveSipProfile(profileId: string, currentUser: ApiUser) {
   return (await getRepository()).setActiveSipProfile(profileId, currentUser);
+}
+
+export async function updateSipProfile(
+  profileId: string,
+  input: UpdateSipProfileInput,
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).updateSipProfile(profileId, input, currentUser);
+}
+
+export async function deleteSipProfile(profileId: string, currentUser: ApiUser) {
+  return (await getRepository()).deleteSipProfile(profileId, currentUser);
+}
+
+export async function assignSipProfileToUser(
+  userId: string,
+  profileId: string | null,
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).assignSipProfileToUser(userId, profileId, currentUser);
 }
 
 export async function getVoiceIdentity(user: ApiUser) {

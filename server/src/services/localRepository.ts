@@ -9,6 +9,7 @@ import { buildAiAssist } from "./aiAssistService.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { getRuntimeStatus } from "./runtimeMode.js";
 import { getVoiceFieldStatus, getVoiceProviderConfig } from "./voiceProviderService.js";
+import { buildSipWorkspaceExposure, canManageWorkspaceAdmin } from "./workspaceAccessService.js";
 import type {
   ApiCallActivityType,
   ApiCallDisposition,
@@ -30,6 +31,7 @@ import type {
   SaveDispositionInput,
   SignupInput,
   StoredSipProfile,
+  UpdateSipProfileInput,
   UploadResult,
   WorkspacePayload,
 } from "../types/index.js";
@@ -848,6 +850,21 @@ function getActiveSipProfilePreference(state: LocalStoreState, userId: string) {
   return state.userSipPreferences.find((preference) => preference.userId === userId) ?? null;
 }
 
+function attachSipAssignmentsToUsers(state: LocalStoreState, users: ApiUser[]) {
+  return users.map((user) => {
+    const preference = getActiveSipProfilePreference(state, user.id);
+    const profile = preference?.activeSipProfileId
+      ? state.sipProfiles.find((item) => item.id === preference.activeSipProfileId) ?? null
+      : null;
+
+    return {
+      ...user,
+      activeSipProfileId: profile?.id ?? null,
+      activeSipProfileLabel: profile?.label ?? null,
+    };
+  });
+}
+
 function ensureLeadAccess(state: LocalStoreState, leadId: string, currentUser: ApiUser) {
   const lead = state.leads.find((item) => item.id === leadId);
   if (!lead) {
@@ -894,7 +911,7 @@ async function buildSettingsStatus() {
 
   return {
     authMode: "local" as const,
-    signupEnabled: true,
+    signupEnabled: false,
     importFormats: ["csv", "xlsx", "xls"],
     voice: {
       provider: voice.provider,
@@ -958,12 +975,15 @@ export async function syncAuthUserLink(email: string, authUserId: string) {
 
 export async function listUsers() {
   const state = await getSnapshot();
-  return mapUsers(state.users);
+  return attachSipAssignmentsToUsers(state, mapUsers(state.users));
 }
 
 export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePayload> {
   const state = await getSnapshot();
-  const users = mapUsers(state.users);
+  const baseUsers = mapUsers(state.users);
+  const users = canManageWorkspaceAdmin(currentUser)
+    ? attachSipAssignmentsToUsers(state, baseUsers)
+    : baseUsers;
   const usersById = new Map(users.map((user) => [user.id, user]));
   const leads =
     currentUser.role === "agent"
@@ -974,28 +994,36 @@ export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePaylo
   );
   const visibleSipProfiles = getVisibleSipProfiles(state, currentUser);
   const activePreference = getActiveSipProfilePreference(state, currentUser.id);
-  const activeSipProfileRecord =
-    visibleSipProfiles.find((profile) => profile.id === activePreference?.activeSipProfileId) ?? null;
-  const activeSipProfile = activeSipProfileRecord
-    ? mapSipProfile(activeSipProfileRecord, activeSipProfileRecord.id, usersById)
+  const assignedSipProfileRecord = activePreference?.activeSipProfileId
+    ? state.sipProfiles.find((profile) => profile.id === activePreference.activeSipProfileId) ?? null
+    : null;
+  const activeVisibleSipProfileRecord =
+    visibleSipProfiles.find((profile) => profile.id === assignedSipProfileRecord?.id) ?? null;
+  const activeSipProfile = activeVisibleSipProfileRecord
+    ? mapSipProfile(activeVisibleSipProfileRecord, assignedSipProfileRecord?.id ?? null, usersById)
     : null;
   const sipProfiles = visibleSipProfiles.map((profile) =>
-    mapSipProfile(profile, activeSipProfileRecord?.id ?? null, usersById),
+    mapSipProfile(profile, assignedSipProfileRecord?.id ?? null, usersById),
   );
-  const sipProfileSelectionRequired = visibleSipProfiles.length > 0 && !activeSipProfileRecord;
-  const voice = activeSipProfileRecord
+  const sipExposure = buildSipWorkspaceExposure(currentUser, {
+    profiles: sipProfiles,
+    activeProfile: activeSipProfile,
+    selectionRequired:
+      currentUser.role === "admin" && visibleSipProfiles.length > 0 && !assignedSipProfileRecord,
+  });
+  const voice = assignedSipProfileRecord
     ? {
         provider: "embedded-sip" as const,
         available: true,
         source: "profile" as const,
-        callerId: activeSipProfileRecord.callerId,
-        websocketUrl: activeSipProfileRecord.providerUrl,
-        sipDomain: activeSipProfileRecord.sipDomain,
-        username: activeSipProfileRecord.sipUsername,
-        profileId: activeSipProfileRecord.id,
-        profileLabel: activeSipProfileRecord.label,
+        callerId: assignedSipProfileRecord.callerId,
+        websocketUrl: assignedSipProfileRecord.providerUrl,
+        sipDomain: assignedSipProfileRecord.sipDomain,
+        username: assignedSipProfileRecord.sipUsername,
+        profileId: assignedSipProfileRecord.id,
+        profileLabel: assignedSipProfileRecord.label,
       }
-    : sipProfileSelectionRequired
+    : sipExposure.selectionRequired
       ? {
           provider: "embedded-sip" as const,
           available: false,
@@ -1016,9 +1044,9 @@ export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePaylo
     analytics: buildWorkspaceAnalytics(scopedLeads, users, currentUser),
     settings: await buildSettingsStatus(),
     voice,
-    sipProfiles,
-    activeSipProfile,
-    sipProfileSelectionRequired,
+    sipProfiles: sipExposure.profiles,
+    activeSipProfile: sipExposure.activeProfile,
+    sipProfileSelectionRequired: sipExposure.selectionRequired,
   };
 }
 
@@ -1421,31 +1449,8 @@ export async function createWorkspaceUser(input: CreateUserInput, _currentUser: 
 }
 
 export async function createPublicSignup(input: SignupInput) {
-  return withWrite((state) => {
-    if (getUserRecordByEmail(state, input.email)) {
-      throw new Error("A workspace user with this email already exists");
-    }
-
-    const createdAt = nowIso();
-    const user: LocalUserRecord = {
-      id: randomUUID(),
-      authUserId: randomUUID(),
-      name: input.name.trim(),
-      email: input.email.trim().toLowerCase(),
-      role: "agent",
-      team: input.team.trim(),
-      timezone: input.timezone.trim(),
-      avatar: getInitials(input.name.trim()),
-      title: input.title.trim(),
-      status: "offline",
-      passwordHash: hashPassword(input.password),
-      createdAt,
-      updatedAt: createdAt,
-    };
-
-    state.users.push(user);
-    return mapUser(user);
-  });
+  void input;
+  throw new Error("Account creation is managed by an administrator.");
 }
 
 export async function updateWorkspaceUserStatus(
@@ -1465,18 +1470,28 @@ export async function updateWorkspaceUserStatus(
 }
 
 export async function listSipProfiles(currentUser: ApiUser): Promise<ApiSipProfile[]> {
-  const workspace = await getWorkspace(currentUser);
-  return workspace.sipProfiles;
+  const state = await getSnapshot();
+  const users = mapUsers(state.users);
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const profiles = getVisibleSipProfiles(state, currentUser).map((profile) =>
+    mapSipProfile(profile, null, usersById),
+  );
+
+  return buildSipWorkspaceExposure(currentUser, {
+    profiles,
+    activeProfile: null,
+    selectionRequired: false,
+  }).profiles;
 }
 
 export async function getActiveSipProfile(currentUser: ApiUser): Promise<StoredSipProfile | null> {
   const state = await getSnapshot();
   const users = mapUsers(state.users);
   const usersById = new Map(users.map((user) => [user.id, user]));
-  const visibleSipProfiles = getVisibleSipProfiles(state, currentUser);
   const activePreference = getActiveSipProfilePreference(state, currentUser.id);
-  const activeProfile =
-    visibleSipProfiles.find((profile) => profile.id === activePreference?.activeSipProfileId) ?? null;
+  const activeProfile = activePreference?.activeSipProfileId
+    ? state.sipProfiles.find((profile) => profile.id === activePreference.activeSipProfileId) ?? null
+    : null;
 
   return activeProfile
     ? mapStoredSipProfile(activeProfile, activeProfile.id, usersById)
@@ -1548,6 +1563,167 @@ export async function setActiveSipProfile(profileId: string, currentUser: ApiUse
       createdAt: now,
       updatedAt: now,
     });
+  });
+}
+
+export async function updateSipProfile(
+  profileId: string,
+  input: UpdateSipProfileInput,
+  currentUser: ApiUser,
+) {
+  return withWrite((state) => {
+    const profile = state.sipProfiles.find((item) => item.id === profileId);
+    if (!profile) {
+      throw new Error("SIP profile not found");
+    }
+    if (currentUser.role !== "admin" && !profile.isShared && profile.ownerUserId !== currentUser.id) {
+      throw new Error("SIP profile not found");
+    }
+
+    const normalizedLabel = input.label.trim();
+    const normalizedUrl = normalizeSipProviderUrl(input.providerUrl);
+    const normalizedDomain = normalizeSipDomain(input.sipDomain);
+    const normalizedUsername = input.sipUsername.trim();
+    const normalizedPassword = input.sipPassword?.trim() ?? "";
+    const normalizedCallerId = input.callerId.trim();
+    const isShared = currentUser.role !== "agent" && input.isShared;
+
+    if (
+      !normalizedLabel ||
+      !normalizedUrl ||
+      !normalizedDomain ||
+      !normalizedUsername ||
+      !normalizedCallerId
+    ) {
+      throw new Error("Every SIP profile field except password is required");
+    }
+
+    profile.label = normalizedLabel;
+    profile.providerUrl = normalizedUrl;
+    profile.sipDomain = normalizedDomain;
+    profile.sipUsername = normalizedUsername;
+    if (normalizedPassword) {
+      profile.sipPassword = normalizedPassword;
+    }
+    profile.callerId = normalizedCallerId;
+    profile.isShared = isShared;
+    profile.ownerUserId = isShared ? null : profile.ownerUserId;
+    profile.updatedAt = nowIso();
+
+    return mapSipProfile(profile, profile.id, new Map([[currentUser.id, currentUser]]));
+  });
+}
+
+export async function deleteSipProfile(profileId: string, currentUser: ApiUser) {
+  await withWrite((state) => {
+    const profile = state.sipProfiles.find((item) => item.id === profileId);
+    if (!profile) {
+      throw new Error("SIP profile not found");
+    }
+    if (currentUser.role !== "admin" && !profile.isShared && profile.ownerUserId !== currentUser.id) {
+      throw new Error("SIP profile not found");
+    }
+
+    state.sipProfiles = state.sipProfiles.filter((item) => item.id !== profileId);
+    state.userSipPreferences = state.userSipPreferences.filter(
+      (preference) => preference.activeSipProfileId !== profileId,
+    );
+  });
+}
+
+export async function assignSipProfileToUser(
+  userId: string,
+  profileId: string | null,
+  _currentUser: ApiUser,
+) {
+  await withWrite((state) => {
+    const user = getUserRecordById(state, userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (profileId) {
+      const profile = state.sipProfiles.find((item) => item.id === profileId);
+      if (!profile) {
+        throw new Error("SIP profile not found");
+      }
+    }
+
+    const now = nowIso();
+    const existing = getActiveSipProfilePreference(state, userId);
+    if (existing) {
+      existing.activeSipProfileId = profileId;
+      existing.updatedAt = now;
+      return;
+    }
+
+    state.userSipPreferences.push({
+      userId,
+      activeSipProfileId: profileId,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
+export async function deleteWorkspaceUser(userId: string, currentUser: ApiUser) {
+  await withWrite((state) => {
+    if (userId === currentUser.id) {
+      throw new Error("You cannot delete your own admin account.");
+    }
+
+    const user = getUserRecordById(state, userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    state.leads.forEach((lead) => {
+      if (lead.assignedAgentId === userId) {
+        syncLeadAssignment(lead, null);
+        lead.updatedAt = nowIso();
+      }
+
+      lead.callHistory = lead.callHistory.map((call) =>
+        call.agentId === userId
+          ? {
+              ...call,
+              agentId: "",
+              agentName: "Removed User",
+            }
+          : call,
+      );
+
+      lead.notesHistory = lead.notesHistory.map((note) =>
+        note.authorId === userId
+          ? {
+              ...note,
+              authorId: "",
+              authorName: "Removed User",
+            }
+          : note,
+      );
+
+      lead.activities = lead.activities.map((activity) =>
+        activity.actorName === user.name
+          ? {
+              ...activity,
+              actorName: "Removed User",
+            }
+          : activity,
+      );
+    });
+
+    const ownedProfileIds = state.sipProfiles
+      .filter((profile) => profile.ownerUserId === userId)
+      .map((profile) => profile.id);
+
+    state.sipProfiles = state.sipProfiles.filter((profile) => profile.ownerUserId !== userId);
+    state.userSipPreferences = state.userSipPreferences.filter(
+      (preference) =>
+        preference.userId !== userId &&
+        !ownedProfileIds.includes(preference.activeSipProfileId ?? ""),
+    );
+    state.users = state.users.filter((item) => item.id !== userId);
   });
 }
 

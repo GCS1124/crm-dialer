@@ -16,7 +16,7 @@ export async function runtimeController(_req: Request, res: Response) {
   return res.json({
     backend: "ok" as const,
     dataMode: runtime.dataMode,
-    signupEnabled: true,
+    signupEnabled: false,
     message,
     supabase: runtime.supabase,
     voice: {

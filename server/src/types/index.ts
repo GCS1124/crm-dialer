@@ -49,6 +49,8 @@ export interface ApiUser {
   avatar: string;
   title: string;
   status: "online" | "away" | "offline";
+  activeSipProfileId?: string | null;
+  activeSipProfileLabel?: string | null;
 }
 
 export interface ApiNoteEntry {
@@ -305,6 +307,16 @@ export interface CreateSipProfileInput {
   sipDomain: string;
   sipUsername: string;
   sipPassword: string;
+  callerId: string;
+  isShared: boolean;
+}
+
+export interface UpdateSipProfileInput {
+  label: string;
+  providerUrl: string;
+  sipDomain: string;
+  sipUsername: string;
+  sipPassword?: string;
   callerId: string;
   isShared: boolean;
 }

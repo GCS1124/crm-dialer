@@ -103,30 +103,11 @@ export function PostCallPanel({
           </select>
         </label>
 
-        <label className="space-y-1.5 text-[11px] md:col-span-2">
-          <span className="font-medium text-slate-700 dark:text-slate-200">Outcome summary</span>
-          <input
-            value={outcomeSummary}
-            onChange={(event) => setOutcomeSummary(event.target.value)}
-            placeholder="One-line summary for the next person viewing this lead"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
-          />
-        </label>
+        
 
         <label className="space-y-1.5 text-[11px] md:col-span-2">
           <span className="font-medium text-slate-700 dark:text-slate-200">Call notes</span>
-          <div className="flex flex-wrap gap-2">
-            {noteTemplates.map((template) => (
-              <button
-                key={template}
-                type="button"
-                onClick={() => setNotes((current) => (current ? `${current}\n${template}` : template))}
-                className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-              >
-                {template}
-              </button>
-            ))}
-          </div>
+          
           <textarea
             value={notes}
             onChange={(event) => setNotes(event.target.value)}

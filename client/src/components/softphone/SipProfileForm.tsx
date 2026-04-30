@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import type { CreateSipProfileInput } from "../../types";
 import { Button } from "../shared/Button";
@@ -8,6 +8,9 @@ interface SipProfileFormProps {
   submitLabel: string;
   allowShared: boolean;
   initialShared?: boolean;
+  initialValues?: Partial<CreateSipProfileInput>;
+  passwordOptional?: boolean;
+  onCancel?: () => void;
   className?: string;
 }
 
@@ -21,19 +24,42 @@ const emptyForm: CreateSipProfileInput = {
   isShared: false,
 };
 
+function buildInitialForm(
+  initialValues: Partial<CreateSipProfileInput> | undefined,
+  allowShared: boolean,
+  initialShared: boolean,
+): CreateSipProfileInput {
+  return {
+    ...emptyForm,
+    ...initialValues,
+    isShared:
+      typeof initialValues?.isShared === "boolean"
+        ? allowShared && initialValues.isShared
+        : initialShared && allowShared,
+    sipPassword: initialValues?.sipPassword ?? "",
+  };
+}
+
 export function SipProfileForm({
   onSubmit,
   submitLabel,
   allowShared,
   initialShared = false,
+  initialValues,
+  passwordOptional = false,
+  onCancel,
   className = "",
 }: SipProfileFormProps) {
-  const [form, setForm] = useState<CreateSipProfileInput>({
-    ...emptyForm,
-    isShared: initialShared && allowShared,
-  });
+  const [form, setForm] = useState<CreateSipProfileInput>(
+    buildInitialForm(initialValues, allowShared, initialShared),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setForm(buildInitialForm(initialValues, allowShared, initialShared));
+    setError(null);
+  }, [allowShared, initialShared, initialValues]);
 
   const updateField = <K extends keyof CreateSipProfileInput>(
     field: K,
@@ -52,10 +78,7 @@ export function SipProfileForm({
 
     try {
       await onSubmit(form);
-      setForm({
-        ...emptyForm,
-        isShared: initialShared && allowShared,
-      });
+      setForm(buildInitialForm(undefined, allowShared, initialShared));
     } catch (submissionError) {
       setError(
         submissionError instanceof Error
@@ -131,8 +154,8 @@ export function SipProfileForm({
             type="password"
             value={form.sipPassword}
             onChange={(event) => updateField("sipPassword", event.target.value)}
-            placeholder="Password"
-            required
+            placeholder={passwordOptional ? "Leave blank to keep current password" : "Password"}
+            required={!passwordOptional}
           />
         </label>
 
@@ -155,7 +178,7 @@ export function SipProfileForm({
           <div>
             <p className="font-medium text-slate-900">Shared profile</p>
             <p className="mt-0.5 text-[12px] text-slate-500">
-              Shared profiles are visible to other agents in the workspace.
+              Shared profiles stay admin-managed and can be assigned across users.
             </p>
           </div>
           <input
@@ -173,7 +196,12 @@ export function SipProfileForm({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {onCancel ? (
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+        ) : null}
         <Button type="submit" disabled={submitting}>
           {submitting ? "Saving..." : submitLabel}
         </Button>

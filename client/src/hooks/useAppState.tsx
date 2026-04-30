@@ -24,6 +24,7 @@ import type {
   SaveDispositionInput,
   SipProfile,
   ThemeMode,
+  UpdateSipProfileInput,
   UploadResult,
   User,
   VoiceProviderConfig,
@@ -158,7 +159,7 @@ const emptyVoiceConfig: VoiceProviderConfig = {
 
 const emptySettingsStatus: WorkspaceSettingsStatus = {
   authMode: "supabase",
-  signupEnabled: true,
+  signupEnabled: false,
   importFormats: ["csv", "xlsx", "xls"],
   voice: {
     provider: "embedded-sip",
@@ -262,11 +263,15 @@ interface AppStateContextValue {
     title: string;
   }) => Promise<InviteUserResult>;
   setUserStatus: (userId: string, status: User["status"]) => Promise<void>;
+  deleteUser: (userId: string) => Promise<void>;
   createSipProfile: (
     input: CreateSipProfileInput,
     options?: { activate?: boolean },
   ) => Promise<SipProfile>;
   activateSipProfile: (profileId: string) => Promise<void>;
+  updateSipProfile: (profileId: string, input: UpdateSipProfileInput) => Promise<SipProfile>;
+  deleteSipProfile: (profileId: string) => Promise<void>;
+  assignSipProfileToUser: (userId: string, profileId: string | null) => Promise<void>;
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
@@ -1368,6 +1373,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await refreshWorkspace();
   };
 
+  const deleteUser = async (userId: string) => {
+    if (!authToken) {
+      return;
+    }
+
+    await apiRequest(`/users/${userId}`, {
+      method: "DELETE",
+      token: authToken,
+    });
+    await refreshWorkspace();
+  };
+
   const activateSipProfile = async (profileId: string) => {
     if (!authToken) {
       throw new Error("Missing session");
@@ -1407,6 +1424,46 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     await refreshWorkspace();
     return response.profile;
+  };
+
+  const updateSipProfile = async (profileId: string, input: UpdateSipProfileInput) => {
+    if (!authToken) {
+      throw new Error("Missing session");
+    }
+
+    const response = await apiRequest<{ profile: SipProfile }>(`/sip-profiles/${profileId}`, {
+      method: "PATCH",
+      token: authToken,
+      body: JSON.stringify(input),
+    });
+
+    await refreshWorkspace();
+    return response.profile;
+  };
+
+  const deleteSipProfile = async (profileId: string) => {
+    if (!authToken) {
+      throw new Error("Missing session");
+    }
+
+    await apiRequest(`/sip-profiles/${profileId}`, {
+      method: "DELETE",
+      token: authToken,
+    });
+    await refreshWorkspace();
+  };
+
+  const assignSipProfileToUser = async (userId: string, profileId: string | null) => {
+    if (!authToken) {
+      throw new Error("Missing session");
+    }
+
+    await apiRequest("/sip-profiles/assign", {
+      method: "PATCH",
+      token: authToken,
+      body: JSON.stringify({ userId, profileId }),
+    });
+    await refreshWorkspace();
   };
 
   return (
@@ -1468,8 +1525,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         reopenLead: reopenLeadRecord,
         inviteUser,
         setUserStatus,
+        deleteUser,
         createSipProfile,
         activateSipProfile,
+        updateSipProfile,
+        deleteSipProfile,
+        assignSipProfileToUser,
       }}
     >
       {children}
