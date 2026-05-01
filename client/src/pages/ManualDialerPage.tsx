@@ -91,13 +91,13 @@ export function ManualDialerPage() {
     return selectedCountry?.callingCode ?? "";
   }, [countryId, customCallingCode, selectedCountry]);
 
-  const normalizedDialDigits = useMemo(() => {
+  const formattedDialNumber = useMemo(() => {
     if (!dialTarget) {
       return "";
     }
 
     if (dialTarget.startsWith("+")) {
-      return dialTarget.slice(1);
+      return dialTarget;
     }
 
     if (dialDigits.length <= 6) {
@@ -113,14 +113,14 @@ export function ManualDialerPage() {
     // If a user pastes an international number (e.g. +91XXXXXXXXXX or 91XXXXXXXXXX),
     // keep the user-entered country code and avoid adding it twice.
     if (dialDigits.startsWith(callingCode)) {
-      return dialDigits;
+      return `+${dialDigits}`;
     }
 
     if (expectedLength && dialDigits.length !== expectedLength) {
       return dialDigits;
     }
 
-    return `${callingCode}${dialDigits}`;
+    return `+${callingCode}${dialDigits}`;
   }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
@@ -170,7 +170,7 @@ export function ManualDialerPage() {
       return;
     }
 
-    const callNumber = normalizedDialDigits || dialDigits;
+    const callNumber = formattedDialNumber || dialDigits;
     if (!callNumber) {
       setDialPadMessage("Enter a valid phone number.");
       return;
@@ -320,9 +320,9 @@ export function ManualDialerPage() {
                 </label>
               ) : null}
 
-              {normalizedDialDigits && dialDigits.length > 6 ? (
+              {formattedDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Dialing as: {normalizedDialDigits}
+                  Dialing as: {formattedDialNumber}
                 </p>
               ) : null}
 
