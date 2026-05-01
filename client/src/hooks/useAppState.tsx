@@ -76,6 +76,22 @@ function normalizeDialTarget(phone: string, sipDomain: string, dialPrefix = "") 
 
   const isLikelyPhoneNumber = phoneHasPlus || phoneDigits.length >= 8;
   let digits = phoneDigits;
+
+  // India dialing normalization:
+  // When a SIP trunk is configured for national dialing with a trunk prefix `0`, the trunk typically
+  // expects the 10-digit national number after that prefix (0XXXXXXXXXX) rather than an E.164 number
+  // which includes the country code (91XXXXXXXXXX). This keeps lead imports flexible while ensuring
+  // the SIP Request-URI matches the trunk's expected dial plan.
+  if (
+    isLikelyPhoneNumber &&
+    prefixDigits === "0" &&
+    digits.startsWith("91") &&
+    digits.length === 12 &&
+    /^[6-9]\d{9}$/.test(digits.slice(2))
+  ) {
+    digits = digits.slice(2);
+  }
+
   if (isLikelyPhoneNumber && prefixDigits) {
     const shouldPrefix =
       prefixDigits.length === 1

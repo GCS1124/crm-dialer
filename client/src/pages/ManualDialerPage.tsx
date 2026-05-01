@@ -91,7 +91,7 @@ export function ManualDialerPage() {
     return selectedCountry?.callingCode ?? "";
   }, [countryId, customCallingCode, selectedCountry]);
 
-  const formattedDialNumber = useMemo(() => {
+  const normalizedDialDigits = useMemo(() => {
     if (!dialTarget) {
       return "";
     }
@@ -104,20 +104,27 @@ export function ManualDialerPage() {
       return dialDigits;
     }
 
-    if (!callingCode) {
+    if (!selectedCountry || !callingCode) {
       return dialDigits;
     }
 
-    if (dialDigits.startsWith(callingCode)) {
-      return dialDigits;
+    const expectedLength = selectedCountry.nationalNumberLength;
+    let digits = dialDigits;
+
+    // If a user pastes an international number (e.g. +91XXXXXXXXXX or 91XXXXXXXXXX),
+    // strip the country code and dial the national number. This matches the normal
+    // dialer flow where the backend/voice config applies any required trunk prefix.
+    if (digits.startsWith(callingCode) && digits.length === callingCode.length + expectedLength) {
+      digits = digits.slice(callingCode.length);
     }
 
-    const expectedLength = selectedCountry?.nationalNumberLength ?? null;
-    if (expectedLength && dialDigits.length !== expectedLength) {
-      return dialDigits;
+    // India trunks frequently expect national dialing (0 + 10 digits) for mobile calls.
+    // If we're dialing a 10-digit Indian mobile, include the trunk prefix.
+    if (selectedCountry.id === "IN" && digits.length === expectedLength && /^[6-9]\d{9}$/.test(digits)) {
+      return `0${digits}`;
     }
 
-    return `${callingCode}${dialDigits}`;
+    return digits;
   }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
@@ -167,7 +174,7 @@ export function ManualDialerPage() {
       return;
     }
 
-    const callNumber = formattedDialNumber || dialDigits;
+    const callNumber = normalizedDialDigits || dialDigits;
     if (!callNumber) {
       setDialPadMessage("Enter a valid phone number.");
       return;
@@ -317,9 +324,9 @@ export function ManualDialerPage() {
                 </label>
               ) : null}
 
-              {formattedDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
+              {normalizedDialDigits && dialDigits.length > 6 ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Dialing as: {formattedDialNumber}
+                  Dialing as: {normalizedDialDigits}
                 </p>
               ) : null}
 
