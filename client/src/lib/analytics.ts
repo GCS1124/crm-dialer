@@ -29,6 +29,10 @@ const openStatuses = new Set([
   "appointment_booked",
 ]);
 
+function isDiagnosticCall(call: Lead["callHistory"][number]) {
+  return call.source === "failed_attempt" || call.status === "failed";
+}
+
 export function getVisibleLeads(leads: Lead[], role: UserRole, userId: string) {
   if (role === "agent") {
     return leads.filter((lead) => lead.assignedAgentId === userId);
@@ -86,7 +90,9 @@ export function getDispositionBreakdown(leads: Lead[], userId?: string) {
         return;
       }
 
-      buckets.set(call.disposition, (buckets.get(call.disposition) ?? 0) + 1);
+      if (!isDiagnosticCall(call)) {
+        buckets.set(call.disposition, (buckets.get(call.disposition) ?? 0) + 1);
+      }
     });
   });
 
@@ -132,7 +138,9 @@ export function getAgentDashboardMetrics(
 ): AgentDashboardMetrics {
   const scopedLeads = leads.filter((lead) => lead.assignedAgentId === userId);
   const todayCalls = scopedLeads.flatMap((lead) =>
-    lead.callHistory.filter((call) => call.agentId === userId && isToday(call.createdAt)),
+    lead.callHistory.filter(
+      (call) => call.agentId === userId && isToday(call.createdAt) && !isDiagnosticCall(call),
+    ),
   );
 
   const connectedCalls = todayCalls.filter((call) =>
@@ -173,7 +181,7 @@ export function getAgentDashboardMetrics(
 }
 
 export function getAdminDashboardMetrics(leads: Lead[]): AdminDashboardMetrics {
-  const calls = leads.flatMap((lead) => lead.callHistory);
+  const calls = leads.flatMap((lead) => lead.callHistory).filter((call) => !isDiagnosticCall(call));
   const connectedCalls = calls.filter(
     (call) =>
       !["No Answer", "Busy", "Voicemail", "Wrong Number"].includes(call.disposition),
@@ -225,6 +233,7 @@ export function getDailyPerformance(leads: Lead[], userId?: string): DailyPerfor
         }
 
         return (
+          !isDiagnosticCall(call) &&
           callDate.getFullYear() === day.getFullYear() &&
           callDate.getMonth() === day.getMonth() &&
           callDate.getDate() === day.getDate()
@@ -248,7 +257,7 @@ export function getTopAgents(leads: Lead[], users: User[]): TopAgentDatum[] {
     .filter((user) => user.role !== "admin")
     .map((user) => {
       const calls = leads.flatMap((lead) =>
-        lead.callHistory.filter((call) => call.agentId === user.id),
+        lead.callHistory.filter((call) => call.agentId === user.id && !isDiagnosticCall(call)),
       );
       const conversions = calls.filter(
         (call) =>

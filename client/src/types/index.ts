@@ -29,13 +29,24 @@ export type CallDisposition =
   | "Call Back Later"
   | "Follow-Up Required"
   | "Appointment Booked"
-  | "Sale Closed";
+  | "Sale Closed"
+  | "Failed Attempt";
 
 export type CallType = "incoming" | "outgoing";
 
-export type CallLogStatus = "connected" | "missed" | "follow_up";
+export type CallLogStatus = "connected" | "missed" | "follow_up" | "failed";
 
 export type CallSentiment = "positive" | "neutral" | "negative";
+
+export type CallAttemptFailureStage =
+  | "session_unavailable"
+  | "session_start"
+  | "invite"
+  | "microphone"
+  | "server_disconnect"
+  | "sip_reject"
+  | "hangup_before_connect"
+  | "unknown";
 
 export type CallActivityType =
   | "call"
@@ -87,6 +98,11 @@ export interface CallLog {
   durationSeconds: number;
   disposition: CallDisposition;
   status: CallLogStatus;
+  source?: "call_log" | "failed_attempt";
+  failureStage?: CallAttemptFailureStage;
+  sipStatus?: number | null;
+  sipReason?: string | null;
+  failureMessage?: string | null;
   notes: string;
   recordingEnabled: boolean;
   outcomeSummary: string;

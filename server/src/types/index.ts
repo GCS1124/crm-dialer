@@ -27,13 +27,24 @@ export type ApiCallDisposition =
   | "Call Back Later"
   | "Follow-Up Required"
   | "Appointment Booked"
-  | "Sale Closed";
+  | "Sale Closed"
+  | "Failed Attempt";
 
 export type ApiCallType = "incoming" | "outgoing";
 
-export type ApiCallLogStatus = "connected" | "missed" | "follow_up";
+export type ApiCallLogStatus = "connected" | "missed" | "follow_up" | "failed";
 
 export type ApiCallSentiment = "positive" | "neutral" | "negative";
+
+export type ApiCallAttemptFailureStage =
+  | "session_unavailable"
+  | "session_start"
+  | "invite"
+  | "microphone"
+  | "server_disconnect"
+  | "sip_reject"
+  | "hangup_before_connect"
+  | "unknown";
 
 export type ApiCallActivityType =
   | "call"
@@ -77,6 +88,11 @@ export interface ApiCallLog {
   durationSeconds: number;
   disposition: ApiCallDisposition;
   status: ApiCallLogStatus;
+  source?: "call_log" | "failed_attempt";
+  failureStage?: ApiCallAttemptFailureStage;
+  sipStatus?: number | null;
+  sipReason?: string | null;
+  failureMessage?: string | null;
   notes: string;
   recordingEnabled: boolean;
   outcomeSummary: string;
@@ -158,6 +174,17 @@ export interface SaveDispositionInput {
   outcomeSummary: string;
   durationSeconds: number;
   recordingEnabled: boolean;
+}
+
+export interface SaveFailedCallAttemptInput {
+  leadId: string;
+  dialedNumber: string;
+  failureStage: ApiCallAttemptFailureStage;
+  sipStatus?: number | null;
+  sipReason?: string | null;
+  failureMessage?: string | null;
+  startedAt: string;
+  endedAt?: string;
 }
 
 export interface CreateCallLogInput {

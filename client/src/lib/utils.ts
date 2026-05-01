@@ -103,6 +103,8 @@ export function getDispositionTone(disposition: CallDisposition) {
       "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300",
     "Sale Closed":
       "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
+    "Failed Attempt":
+      "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300",
   };
 
   return palette[disposition];
@@ -113,6 +115,7 @@ export function getCallStatusTone(status: CallLogStatus) {
     connected: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
     missed: "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300",
     follow_up: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
+    failed: "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300",
   };
 
   return palette[status];

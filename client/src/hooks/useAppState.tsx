@@ -14,6 +14,7 @@ import { formatDialNumberForSession, normalizeDialTarget } from "../lib/softphon
 import { supabase } from "../lib/supabase";
 import type {
   ActiveCall,
+  CallAttemptFailureStage,
   CallLogFormInput,
   CreateSipProfileInput,
   Lead,
@@ -337,6 +338,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     connected: boolean;
     userHangup: boolean;
     fallbackOpened: boolean;
+    attemptPersisted: boolean;
     sipStatusCode?: number | null;
     sipReasonPhrase?: string | null;
   } | null>(null);
@@ -578,6 +580,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const channel = supabaseClient
       .channel(`crm-live-${currentUser?.id ?? "session"}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "call_logs" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "activity_logs" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "callbacks" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "followups" }, handleChange)
@@ -778,6 +781,42 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function persistFailedCallAttempt(
+    meta: NonNullable<typeof activeCallMetaRef.current>,
+    failureStage: CallAttemptFailureStage,
+    failureMessage: string,
+  ) {
+    if (!authToken || !meta.leadId || meta.connected || meta.attemptPersisted) {
+      return;
+    }
+
+    meta.attemptPersisted = true;
+
+    try {
+      await apiRequest("/dialer/attempt", {
+        method: "POST",
+        token: authToken,
+        body: JSON.stringify({
+          leadId: meta.leadId,
+          dialedNumber: meta.dialedNumber,
+          failureStage,
+          sipStatus: meta.sipStatusCode ?? null,
+          sipReason: meta.sipReasonPhrase ?? null,
+          failureMessage,
+          startedAt: new Date(meta.startedAt).toISOString(),
+          endedAt: new Date().toISOString(),
+        }),
+      });
+      await loadWorkspace(authToken, { silent: true });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to save failed call diagnostics.";
+      setWorkspaceError(message);
+    }
+  }
+
   function finishCallSession(leadId: string | null, startedAt: number) {
     setActiveCall((existing) =>
       existing && existing.startedAt === startedAt ? null : existing,
@@ -794,7 +833,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     activeCallMetaRef.current = null;
   }
 
-  function failCallSession(message: string, startedAt: number) {
+  function failCallSession(
+    message: string,
+    startedAt: number,
+    failureStage: CallAttemptFailureStage = "unknown",
+  ) {
+    const meta = activeCallMetaRef.current;
+    if (meta && meta.startedAt === startedAt && !meta.userHangup) {
+      void persistFailedCallAttempt(meta, failureStage, message);
+    }
+
     setActiveCall((existing) => {
       if (!existing || existing.startedAt !== startedAt) {
         return existing;
@@ -971,6 +1019,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             if (meta.sipStatusCode && meta.sipStatusCode >= 400 && !meta.fallbackOpened) {
               meta.fallbackOpened = true;
               const openedSystemDialer = openSystemDialer(meta.dialedNumber);
+              void persistFailedCallAttempt(
+                meta,
+                "sip_reject",
+                `Browser SIP route was rejected before connect${
+                  sipSummary ? ` (${sipSummary})` : ""
+                }.`,
+              );
               activeCallMetaRef.current = null;
               void destroyVoiceClient().catch(() => undefined);
               setActiveCall((existing) =>
@@ -991,6 +1046,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
                 ? `Call ended before connecting (${sipSummary}).`
                 : "Call ended before connecting (rejected, busy, or no answer).",
               meta.startedAt,
+              meta.sipStatusCode ? "sip_reject" : "hangup_before_connect",
             );
             return;
           }
@@ -1004,7 +1060,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           const meta = activeCallMetaRef.current;
 
           if (meta) {
-            failCallSession(message, meta.startedAt);
+            failCallSession(message, meta.startedAt, "server_disconnect");
             return;
           }
 
@@ -1247,6 +1303,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       connected: false,
       userHangup: false,
       fallbackOpened: false,
+      attemptPersisted: false,
     };
     setActiveCall({
       leadId: callLeadId,
@@ -1267,6 +1324,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             ? error.message
             : "Unable to save the active queue cursor before dialing.",
           startedAt,
+          "session_start",
         );
         throw error;
       }
@@ -1275,6 +1333,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     try {
       const { client, session } = await ensureVoiceClient();
       if (!session.available) {
+        const meta = activeCallMetaRef.current;
+        if (meta && meta.startedAt === startedAt) {
+          void persistFailedCallAttempt(
+            meta,
+            "session_unavailable",
+            session.message ??
+              "Browser calling is unavailable, so the call continued in manual mode.",
+          );
+        }
         setActiveCall((existing) =>
           existing && existing.startedAt === startedAt
             ? {
@@ -1304,6 +1371,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await destroyVoiceClient();
       if (isMicrophoneAccessError(error)) {
         const openedSystemDialer = openSystemDialer(outboundDialNumber);
+        const meta = activeCallMetaRef.current;
+        if (meta && meta.startedAt === startedAt) {
+          void persistFailedCallAttempt(
+            meta,
+            "microphone",
+            "Browser microphone access was blocked before the SIP call could connect.",
+          );
+        }
         activeCallMetaRef.current = null;
         setActiveCall((existing) =>
           existing && existing.startedAt === startedAt
@@ -1323,6 +1398,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           ? error.message
           : "The CRM softphone could not place the SIP call.",
         startedAt,
+        "invite",
       );
       if (callLeadId) {
         await advanceQueueCursor("failed", callLeadId, currentPhoneIndex).catch(() => undefined);

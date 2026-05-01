@@ -4,6 +4,12 @@ import { env } from "../config/env.js";
 import { supabaseAdmin } from "./supabaseAdmin.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { buildAiAssist } from "./aiAssistService.js";
+import {
+  buildFailedAttemptCallLog,
+  buildFailedAttemptDescription,
+  formatFailedAttemptSummary,
+  parseFailedAttemptDescription,
+} from "./callAttemptDiagnostics.js";
 import { buildLeadDialNumbers } from "./phoneNumberService.js";
 import { getQueueKey, toQueueProgressRecord } from "./queueService.js";
 import {
@@ -21,6 +27,7 @@ import { buildSipWorkspaceExposure, canManageWorkspaceAdmin } from "./workspaceA
 import type {
   ApiCallActivityType,
   ApiCallDisposition,
+  ApiCallLog,
   ApiCallLogStatus,
   ApiCallType,
   ApiLead,
@@ -37,6 +44,7 @@ import type {
   CreateSipProfileInput,
   CreateUserInput,
   SaveDispositionInput,
+  SaveFailedCallAttemptInput,
   SignupInput,
   StoredSipProfile,
   UpdateSipProfileInput,
@@ -197,12 +205,17 @@ function dispositionToStatus(disposition: ApiCallDisposition): ApiLeadStatus {
     "Follow-Up Required": "follow_up",
     "Appointment Booked": "appointment_booked",
     "Sale Closed": "closed_won",
+    "Failed Attempt": "contacted",
   };
 
   return map[disposition];
 }
 
 function callStatusFromDisposition(disposition: ApiCallDisposition): ApiCallLogStatus {
+  if (disposition === "Failed Attempt") {
+    return "failed";
+  }
+
   return ["No Answer", "Busy", "Voicemail", "Wrong Number"].includes(disposition)
     ? "missed"
     : disposition === "Call Back Later" || disposition === "Follow-Up Required"
@@ -211,7 +224,7 @@ function callStatusFromDisposition(disposition: ApiCallDisposition): ApiCallLogS
 }
 
 function mapStoredCallStatus(value: string, disposition: ApiCallDisposition): ApiCallLogStatus {
-  if (value === "connected" || value === "missed" || value === "follow_up") {
+  if (value === "connected" || value === "missed" || value === "follow_up" || value === "failed") {
     return value;
   }
 
@@ -241,6 +254,9 @@ function activityTypeFromDisposition(disposition: ApiCallDisposition): ApiCallAc
 }
 
 function dispositionFromCallStatus(status: ApiCallLogStatus): ApiCallDisposition {
+  if (status === "failed") {
+    return "Failed Attempt";
+  }
   if (status === "missed") {
     return "No Answer";
   }
@@ -252,6 +268,9 @@ function dispositionFromCallStatus(status: ApiCallLogStatus): ApiCallDisposition
 }
 
 function leadStatusFromCallStatus(status: ApiCallLogStatus): ApiLeadStatus {
+  if (status === "failed") {
+    return "contacted";
+  }
   if (status === "missed") {
     return "contacted";
   }
@@ -572,6 +591,65 @@ async function buildLeadPayload(currentUser?: ApiUser) {
     });
     const primaryPhone = phoneNumbers[0] ?? lead.phone ?? "";
     const secondaryPhone = phoneNumbers[1] ?? lead.alt_phone ?? "";
+    const activitiesForLead = activitiesByLead.get(lead.id) ?? [];
+    const callHistory: ApiCallLog[] = (callsByLead.get(lead.id) ?? []).map((call) => {
+      const status = mapStoredCallStatus(call.call_status, call.disposition);
+      const aiAssist = buildAiAssist({
+        notes: call.notes ?? "",
+        outcomeSummary: call.outcome_summary ?? "",
+        status,
+        disposition: call.disposition,
+        callbackAt: activeCallback?.scheduled_for ?? lead.callback_time ?? null,
+      });
+
+      return {
+        id: call.id,
+        leadId: lead.id,
+        leadName: lead.full_name ?? "Untitled Lead",
+        phone: primaryPhone,
+        createdAt: call.created_at,
+        agentId: call.agent_id ?? "",
+        agentName: call.agent_id
+          ? usersById.get(call.agent_id)?.name ?? "Unknown Agent"
+          : "Unknown Agent",
+        callType: mapStoredCallType(call.direction),
+        durationSeconds: call.duration_seconds,
+        disposition: call.disposition,
+        status,
+        source: "call_log",
+        notes: call.notes ?? "",
+        recordingEnabled: call.recording_enabled,
+        outcomeSummary: call.outcome_summary ?? "",
+        aiSummary: aiAssist.aiSummary,
+        sentiment: aiAssist.sentiment,
+        suggestedNextAction: aiAssist.suggestedNextAction,
+        followUpAt: activeCallback?.scheduled_for ?? lead.callback_time ?? null,
+      };
+    });
+
+    activitiesForLead.forEach((activity) => {
+      const diagnostic = parseFailedAttemptDescription(activity.description);
+      if (!diagnostic) {
+        return;
+      }
+
+      callHistory.push(
+        buildFailedAttemptCallLog({
+          id: activity.id,
+          leadId: lead.id,
+          leadName: lead.full_name ?? "Untitled Lead",
+          primaryPhone,
+          createdAt: activity.created_at,
+          actor: activity.actor_id ? usersById.get(activity.actor_id) ?? null : null,
+          diagnostic,
+        }),
+      );
+    });
+
+    callHistory.sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+    );
 
     return {
       id: lead.id,
@@ -595,39 +673,7 @@ async function buildLeadPayload(currentUser?: ApiUser) {
       createdAt: lead.created_at ?? new Date().toISOString(),
       updatedAt: lead.updated_at ?? lead.created_at ?? new Date().toISOString(),
       tags: (tagsByLead.get(lead.id) ?? []).map((tag) => tag.label),
-      callHistory: (callsByLead.get(lead.id) ?? []).map((call) => {
-        const status = mapStoredCallStatus(call.call_status, call.disposition);
-        const aiAssist = buildAiAssist({
-          notes: call.notes ?? "",
-          outcomeSummary: call.outcome_summary ?? "",
-          status,
-          disposition: call.disposition,
-          callbackAt: activeCallback?.scheduled_for ?? lead.callback_time ?? null,
-        });
-
-        return {
-          id: call.id,
-          leadId: lead.id,
-          leadName: lead.full_name ?? "Untitled Lead",
-          phone: primaryPhone,
-          createdAt: call.created_at,
-          agentId: call.agent_id ?? "",
-          agentName: call.agent_id
-            ? usersById.get(call.agent_id)?.name ?? "Unknown Agent"
-            : "Unknown Agent",
-          callType: mapStoredCallType(call.direction),
-          durationSeconds: call.duration_seconds,
-          disposition: call.disposition,
-          status,
-          notes: call.notes ?? "",
-          recordingEnabled: call.recording_enabled,
-          outcomeSummary: call.outcome_summary ?? "",
-          aiSummary: aiAssist.aiSummary,
-          sentiment: aiAssist.sentiment,
-          suggestedNextAction: aiAssist.suggestedNextAction,
-          followUpAt: activeCallback?.scheduled_for ?? lead.callback_time ?? null,
-        };
-      }),
+      callHistory,
       notesHistory: (notesByLead.get(lead.id) ?? []).map((note) => ({
         id: note.id,
         body: note.note_body,
@@ -637,16 +683,22 @@ async function buildLeadPayload(currentUser?: ApiUser) {
           ? usersById.get(note.author_id)?.name ?? "System"
           : "System",
       })),
-      activities: (activitiesByLead.get(lead.id) ?? []).map((activity) => ({
-        id: activity.id,
-        type: mapActivityType(activity.activity_type),
-        title: activity.title,
-        description: activity.description ?? "",
-        createdAt: activity.created_at,
-        actorName: activity.actor_id
-          ? usersById.get(activity.actor_id)?.name ?? "System"
-          : "System",
-      })),
+      activities: activitiesForLead.map((activity) => {
+        const diagnostic = parseFailedAttemptDescription(activity.description);
+
+        return {
+          id: activity.id,
+          type: mapActivityType(activity.activity_type),
+          title: activity.title,
+          description: diagnostic
+            ? formatFailedAttemptSummary(diagnostic)
+            : activity.description ?? "",
+          createdAt: activity.created_at,
+          actorName: activity.actor_id
+            ? usersById.get(activity.actor_id)?.name ?? "System"
+            : "System",
+        };
+      }),
       leadScore: lead.lead_score ?? 0,
       timezone: assignedAgent?.timezone ?? "UTC",
     };
@@ -1546,6 +1598,48 @@ export async function saveDisposition(input: SaveDispositionInput, currentUser: 
     disposition: input.disposition,
     callbackAt,
     durationSeconds: input.durationSeconds,
+  });
+}
+
+export async function saveFailedCallAttempt(
+  input: SaveFailedCallAttemptInput,
+  currentUser: ApiUser,
+) {
+  await ensureLeadAccess(input.leadId, currentUser);
+  const now = new Date().toISOString();
+  const description = buildFailedAttemptDescription({
+    ...input,
+    endedAt: input.endedAt || now,
+  });
+
+  const [leadUpdate, activityInsert] = await Promise.all([
+    supabaseAdmin
+      .from("leads")
+      .update({
+        updated_at: now,
+      })
+      .eq("id", input.leadId),
+    supabaseAdmin.from("activity_logs").insert({
+      lead_id: input.leadId,
+      actor_id: currentUser.id,
+      activity_type: "call",
+      title: "Call attempt failed",
+      description,
+    }),
+  ]);
+
+  if (leadUpdate.error) {
+    handleError(leadUpdate.error, "Unable to update lead after failed call attempt");
+  }
+  if (activityInsert.error) {
+    handleError(activityInsert.error, "Unable to save failed call attempt");
+  }
+
+  await insertAuditLog(currentUser.id, "lead", input.leadId, "save_failed_call_attempt", {
+    dialedNumber: input.dialedNumber,
+    failureStage: input.failureStage,
+    sipStatus: input.sipStatus ?? null,
+    sipReason: input.sipReason ?? null,
   });
 }
 

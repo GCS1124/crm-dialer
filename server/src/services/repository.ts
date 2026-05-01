@@ -14,6 +14,7 @@ import type {
   CreateSipProfileInput,
   CreateUserInput,
   SaveDispositionInput,
+  SaveFailedCallAttemptInput,
   SignupInput,
   StoredSipProfile,
   UpdateSipProfileInput,
@@ -131,6 +132,13 @@ export async function markLeadInvalid(leadId: string, currentUser: ApiUser) {
 
 export async function saveDisposition(input: SaveDispositionInput, currentUser: ApiUser) {
   return (await getRepository()).saveDisposition(input, currentUser);
+}
+
+export async function saveFailedCallAttempt(
+  input: SaveFailedCallAttemptInput,
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).saveFailedCallAttempt(input, currentUser);
 }
 
 export async function rescheduleLeadCallback(

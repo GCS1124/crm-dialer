@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Pencil,
   PhoneCall,
   Plus,
@@ -48,14 +49,18 @@ function buildAiPreview(notes: string, status: CallLogStatus, callbackAt: string
 
   const summary =
     notes.trim().split(/\r?\n/).find(Boolean)?.trim().slice(0, 140) ||
-    (status === "missed"
+    (status === "failed"
+      ? "Browser call failed before connecting."
+      : status === "missed"
       ? "Call attempt was missed and needs another try."
       : status === "follow_up"
         ? "Follow-up is required after this call."
         : "Call completed and context was captured.");
 
   const nextAction =
-    status === "follow_up" && callbackAt
+    status === "failed"
+      ? "Review SIP diagnostics, retry the browser call, or continue in manual mode."
+      : status === "follow_up" && callbackAt
       ? "Keep this in the follow-up queue and reconnect at the scheduled time."
       : status === "missed"
         ? "Retry the call later and avoid cluttering the lead with duplicate notes."
@@ -119,6 +124,11 @@ export function CallsPage() {
         ),
     [leads],
   );
+  const normalCalls = useMemo(
+    () => calls.filter((call) => call.source !== "failed_attempt" && call.status !== "failed"),
+    [calls],
+  );
+  const failedAttemptCount = calls.length - normalCalls.length;
 
   const filteredCalls = useMemo(() => {
     const lowered = query.trim().toLowerCase();
@@ -145,16 +155,13 @@ export function CallsPage() {
     });
   }, [calls, leads, query, viewFilter]);
 
-  const todayCalls = calls.filter((call) => isToday(call.createdAt)).length;
-  const weekCalls = calls.filter(
+  const todayCalls = normalCalls.filter((call) => isToday(call.createdAt)).length;
+  const weekCalls = normalCalls.filter(
     (call) => Date.now() - new Date(call.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000,
   ).length;
-  const monthCalls = calls.filter(
+  const monthCalls = normalCalls.filter(
     (call) => Date.now() - new Date(call.createdAt).getTime() <= 30 * 24 * 60 * 60 * 1000,
   ).length;
-  const averageDuration = calls.length
-    ? calls.reduce((sum, call) => sum + call.durationSeconds, 0) / calls.length
-    : 0;
   const hasFilters = Boolean(query.trim()) || viewFilter !== "all";
 
   const aiPreview = buildAiPreview(form.notes, form.status, form.callbackAt);
@@ -198,7 +205,11 @@ export function CallsPage() {
         <MetricCard label="Today" value={todayCalls} icon={PhoneCall} />
         <MetricCard label="This week" value={weekCalls} icon={Search} />
         <MetricCard label="This month" value={monthCalls} icon={Plus} />
-        <MetricCard label="Average duration" value={formatDuration(averageDuration)} icon={Sparkles} />
+        <MetricCard
+          label="Failed attempts"
+          value={String(failedAttemptCount)}
+          icon={AlertTriangle}
+        />
       </div>
 
       <Card className="space-y-4 p-4">
@@ -239,6 +250,7 @@ export function CallsPage() {
         <div className="grid gap-4 xl:grid-cols-2">
           {filteredCalls.map((call) => {
             const lead = leads.find((item) => item.id === call.leadId);
+            const isFailedAttempt = call.source === "failed_attempt" || call.status === "failed";
             return (
               <Card key={call.id} className="space-y-4 p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -250,6 +262,11 @@ export function CallsPage() {
                       <Badge className={getCallStatusTone(call.status)}>
                         {call.status.replace("_", " ")}
                       </Badge>
+                      {isFailedAttempt ? (
+                        <Badge className="bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                          Diagnostic
+                        </Badge>
+                      ) : null}
                       <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                         {call.callType}
                       </Badge>
@@ -262,35 +279,37 @@ export function CallsPage() {
                       {formatPhone(call.phone)} | {call.agentName} | {formatDateTime(call.createdAt)}
                     </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => openEdit(call)}>
-                      <Pencil size={14} />
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={async () => {
-                        try {
-                          await deleteCallLog(call.id);
-                          toast.success("Call log deleted.");
-                        } catch (error) {
-                          toast.error(
-                            error instanceof Error ? error.message : "Unable to delete the call log.",
-                          );
-                        }
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
+                  {!isFailedAttempt ? (
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => openEdit(call)}>
+                        <Pencil size={14} />
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          try {
+                            await deleteCallLog(call.id);
+                            toast.success("Call log deleted.");
+                          } catch (error) {
+                            toast.error(
+                              error instanceof Error ? error.message : "Unable to delete the call log.",
+                            );
+                          }
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-[0.95fr_1.05fr]">
                   <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
                       <Sparkles size={13} />
-                      AI assist
+                      {isFailedAttempt ? "Failed-call diagnostics" : "AI assist"}
                     </div>
                     <p className="mt-3 text-[13px] font-medium text-slate-900 dark:text-white">
                       {call.aiSummary}
@@ -302,9 +321,19 @@ export function CallsPage() {
                   <div className="crm-subtle-card p-3">
                     <div className="grid gap-2 text-[12px] text-slate-600 dark:text-slate-300">
                       <p>
-                        <span className="font-medium text-slate-900 dark:text-white">Duration:</span>{" "}
+                        <span className="font-medium text-slate-900 dark:text-white">
+                          {isFailedAttempt ? "Pre-connect duration:" : "Duration:"}
+                        </span>{" "}
                         {formatDuration(call.durationSeconds)}
                       </p>
+                      {isFailedAttempt ? (
+                        <p>
+                          <span className="font-medium text-slate-900 dark:text-white">SIP:</span>{" "}
+                          {call.sipStatus
+                            ? `${call.sipStatus}${call.sipReason ? ` ${call.sipReason}` : ""}`
+                            : "Not provided"}
+                        </p>
+                      ) : null}
                       <p>
                         <span className="font-medium text-slate-900 dark:text-white">Outcome:</span>{" "}
                         {call.outcomeSummary || "Summary generated from notes"}

@@ -41,6 +41,9 @@ function detectSentiment(text: string, status: ApiCallLogStatus): ApiCallSentime
   if (status === "missed") {
     return "neutral";
   }
+  if (status === "failed") {
+    return "neutral";
+  }
 
   const positiveCount = positiveSignals.filter((signal) => content.includes(signal)).length;
   const negativeCount = negativeSignals.filter((signal) => content.includes(signal)).length;
@@ -64,6 +67,9 @@ function buildSuggestedNextAction(
   }
   if (status === "missed") {
     return "Retry later and leave a note only if you learned something useful.";
+  }
+  if (status === "failed") {
+    return "Review SIP diagnostics, retry the browser call, or continue in manual mode.";
   }
   if (sentiment === "positive") {
     return "Move the lead forward with a concrete next step or booking.";
@@ -98,6 +104,9 @@ function buildSummary(text: string, status: ApiCallLogStatus, disposition?: ApiC
   }
   if (status === "missed") {
     return "Call attempt was missed and needs another try.";
+  }
+  if (status === "failed") {
+    return "Browser call failed before connecting.";
   }
 
   return "Call completed and saved to the CRM.";

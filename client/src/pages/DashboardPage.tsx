@@ -20,7 +20,9 @@ export function DashboardPage() {
   const isAgent = currentUser.role === "agent";
   const agentMetrics = analytics.agentMetrics;
   const adminMetrics = analytics.adminMetrics;
-  const allCalls = leads.flatMap((lead) => lead.callHistory);
+  const allCalls = leads
+    .flatMap((lead) => lead.callHistory)
+    .filter((call) => call.source !== "failed_attempt" && call.status !== "failed");
   const hasWorkspaceData = leads.length > 0 || allCalls.length > 0;
 
   const now = new Date();

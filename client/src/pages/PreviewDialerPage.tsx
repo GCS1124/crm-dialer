@@ -727,32 +727,44 @@ export function PreviewDialerPage() {
                   <DetailSection title="Call history">
                     <div className="space-y-3">
                       {callEntries.length ? (
-                        callEntries.map((call) => (
-                          <div
-                            key={call.id}
-                            className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Badge className={getDispositionTone(call.disposition)}>
-                                  {call.disposition}
-                                </Badge>
-                                <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                                  {formatDuration(call.durationSeconds)}
-                                </Badge>
+                        callEntries.map((call) => {
+                          const isFailedAttempt =
+                            call.source === "failed_attempt" || call.status === "failed";
+
+                          return (
+                            <div
+                              key={call.id}
+                              className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge className={getDispositionTone(call.disposition)}>
+                                    {call.disposition}
+                                  </Badge>
+                                  {isFailedAttempt ? (
+                                    <Badge className="bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                                      {call.sipStatus
+                                        ? `SIP ${call.sipStatus}${call.sipReason ? ` ${call.sipReason}` : ""}`
+                                        : "Pre-connect failure"}
+                                    </Badge>
+                                  ) : null}
+                                  <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                    {formatDuration(call.durationSeconds)}
+                                  </Badge>
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  {formatDateTime(call.createdAt)}
+                                </p>
                               </div>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                {formatDateTime(call.createdAt)}
+                              <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300">
+                                {call.outcomeSummary || call.notes || "No summary"}
+                              </p>
+                              <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                {call.agentName}
                               </p>
                             </div>
-                            <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300">
-                              {call.outcomeSummary || call.notes || "No summary"}
-                            </p>
-                            <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-                              {call.agentName}
-                            </p>
-                          </div>
-                        ))
+                          );
+                        })
                       ) : (
                         <p className="text-[12px] text-slate-500 dark:text-slate-400">No calls yet.</p>
                       )}

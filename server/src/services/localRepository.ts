@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 
 import { env } from "../config/env.js";
 import { buildAiAssist } from "./aiAssistService.js";
+import {
+  buildFailedAttemptCallLog,
+  formatFailedAttemptSummary,
+} from "./callAttemptDiagnostics.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { getRuntimeStatus } from "./runtimeMode.js";
 import { buildLeadDialNumbers } from "./phoneNumberService.js";
@@ -35,6 +39,7 @@ import type {
   QueueProgressRecord,
   QueueSort,
   SaveDispositionInput,
+  SaveFailedCallAttemptInput,
   SignupInput,
   StoredSipProfile,
   UpdateSipProfileInput,
@@ -234,12 +239,17 @@ function dispositionToStatus(disposition: ApiCallDisposition): ApiLeadStatus {
     "Follow-Up Required": "follow_up",
     "Appointment Booked": "appointment_booked",
     "Sale Closed": "closed_won",
+    "Failed Attempt": "contacted",
   };
 
   return map[disposition];
 }
 
 function callStatusFromDisposition(disposition: ApiCallDisposition): ApiCallLogStatus {
+  if (disposition === "Failed Attempt") {
+    return "failed";
+  }
+
   return ["No Answer", "Busy", "Voicemail", "Wrong Number"].includes(disposition)
     ? "missed"
     : disposition === "Call Back Later" || disposition === "Follow-Up Required"
@@ -248,6 +258,9 @@ function callStatusFromDisposition(disposition: ApiCallDisposition): ApiCallLogS
 }
 
 function dispositionFromCallStatus(status: ApiCallLogStatus): ApiCallDisposition {
+  if (status === "failed") {
+    return "Failed Attempt";
+  }
   if (status === "missed") {
     return "No Answer";
   }
@@ -258,6 +271,9 @@ function dispositionFromCallStatus(status: ApiCallLogStatus): ApiCallDisposition
 }
 
 function leadStatusFromCallStatus(status: ApiCallLogStatus): ApiLeadStatus {
+  if (status === "failed") {
+    return "contacted";
+  }
   if (status === "missed") {
     return "contacted";
   }
@@ -316,6 +332,7 @@ function buildCallRecord(input: {
     durationSeconds: input.durationSeconds,
     disposition: input.disposition,
     status: input.status,
+    source: "call_log",
     notes: input.notes,
     recordingEnabled: false,
     outcomeSummary: aiAssist.aiSummary,
@@ -1406,6 +1423,46 @@ export async function saveDisposition(input: SaveDispositionInput, currentUser: 
         buildActivity(currentUser, "callback", "Callback scheduled", `Callback scheduled for ${callbackAt}.`, now),
       );
     }
+  });
+}
+
+export async function saveFailedCallAttempt(
+  input: SaveFailedCallAttemptInput,
+  currentUser: ApiUser,
+) {
+  await withWrite((state) => {
+    const lead = ensureLeadAccess(state, input.leadId, currentUser);
+    const now = nowIso();
+    const diagnostic = {
+      dialedNumber: input.dialedNumber,
+      failureStage: input.failureStage,
+      sipStatus: input.sipStatus ?? null,
+      sipReason: input.sipReason ?? null,
+      failureMessage: input.failureMessage ?? null,
+      startedAt: input.startedAt,
+      endedAt: input.endedAt || now,
+    };
+    const activity = buildActivity(
+      currentUser,
+      "call",
+      "Call attempt failed",
+      formatFailedAttemptSummary(diagnostic),
+      now,
+    );
+
+    lead.callHistory.unshift(
+      buildFailedAttemptCallLog({
+        id: activity.id,
+        leadId: lead.id,
+        leadName: lead.fullName,
+        primaryPhone: lead.phoneNumbers?.[0] ?? lead.phone,
+        createdAt: activity.createdAt,
+        actor: currentUser,
+        diagnostic,
+      }),
+    );
+    lead.activities.unshift(activity);
+    lead.updatedAt = now;
   });
 }
 

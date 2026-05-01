@@ -9,6 +9,7 @@ import {
   listSipProfiles,
   listLeads,
   saveDisposition,
+  saveFailedCallAttempt,
   saveQueueProgress,
 } from "../services/repository.js";
 import { advanceQueueCursor, buildQueueItems, selectQueueState } from "../services/queueService.js";
@@ -17,7 +18,7 @@ import {
   createVoiceSessionPayloadFromSipProfile,
   getVoiceProviderConfig,
 } from "../services/voiceProviderService.js";
-import type { SaveDispositionInput } from "../types/index.js";
+import type { SaveDispositionInput, SaveFailedCallAttemptInput } from "../types/index.js";
 
 const dispositionSchema = z.object({
   leadId: z.string(),
@@ -54,6 +55,28 @@ const dispositionSchema = z.object({
     "invalid",
   ]).default("all"),
   currentPhoneIndex: z.number().int().nonnegative().default(0),
+});
+
+const failedAttemptSchema = z.object({
+  leadId: z.string(),
+  dialedNumber: z.string().trim().min(1).max(64),
+  failureStage: z
+    .enum([
+      "session_unavailable",
+      "session_start",
+      "invite",
+      "microphone",
+      "server_disconnect",
+      "sip_reject",
+      "hangup_before_connect",
+      "unknown",
+    ])
+    .default("unknown"),
+  sipStatus: z.number().int().positive().nullable().optional(),
+  sipReason: z.string().trim().max(160).nullable().optional(),
+  failureMessage: z.string().trim().max(500).nullable().optional(),
+  startedAt: z.string().datetime(),
+  endedAt: z.string().datetime().optional(),
 });
 
 async function getCurrentUser(res: Response) {
@@ -163,4 +186,31 @@ export async function dispositionController(req: Request, res: Response) {
   );
 
   return res.json({ success: true, queueState });
+}
+
+export async function failedAttemptController(req: Request, res: Response) {
+  const currentUser = await getCurrentUser(res);
+  if (!currentUser) {
+    return res.status(401).json({ message: "Missing session context" });
+  }
+
+  const parsed = failedAttemptSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid failed call attempt payload" });
+  }
+
+  const attemptInput: SaveFailedCallAttemptInput = {
+    leadId: parsed.data.leadId,
+    dialedNumber: parsed.data.dialedNumber,
+    failureStage: parsed.data.failureStage,
+    sipStatus: parsed.data.sipStatus ?? null,
+    sipReason: parsed.data.sipReason ?? null,
+    failureMessage: parsed.data.failureMessage ?? null,
+    startedAt: parsed.data.startedAt,
+    endedAt: parsed.data.endedAt,
+  };
+
+  await saveFailedCallAttempt(attemptInput, currentUser);
+
+  return res.status(201).json({ success: true });
 }
