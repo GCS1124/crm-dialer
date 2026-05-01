@@ -18,7 +18,6 @@ export function ImportTemplateCard({ compact = false, className }: ImportTemplat
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="crm-section-label">Task 5</p>
           <h3 className="mt-2 text-[18px] font-semibold text-slate-900 dark:text-white">
             Default upload template
           </h3>
