@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, Globe, PhoneCall, PhoneOff, Pause, Mic, Settings2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, PhoneCall, PhoneOff, Pause, Mic, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -8,12 +8,9 @@ import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { useAppState } from "../hooks/useAppState";
 import { cn, formatDuration, formatPhone } from "../lib/utils";
+import { sanitizeDialPadInput } from "../lib/softphoneDialing";
 
 const dialPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
-
-function sanitizeDialPadInput(value: string) {
-  return value.replace(/[^\d+*#]/g, "");
-}
 
 const manualDialCountries = [
   { id: "US", label: "United States", callingCode: "1", nationalNumberLength: 10 },
@@ -47,10 +44,6 @@ export function ManualDialerPage() {
   const dialDigits = useMemo(() => dialTarget.replace(/[^\d]/g, ""), [dialTarget]);
   const callInProgress = Boolean(activeCall);
   const manualCallActive = activeCall?.status === "manual";
-  const selectedCountry = useMemo(
-    () => manualDialCountries.find((country) => country.id === countryId) ?? null,
-    [countryId],
-  );
 
   useEffect(() => {
     const stored = localStorage.getItem("crm-dialer-manual-dial-country");
@@ -83,45 +76,6 @@ export function ManualDialerPage() {
   useEffect(() => {
     localStorage.setItem("crm-dialer-manual-dial-custom-code", customCallingCode);
   }, [customCallingCode]);
-
-  const callingCode = useMemo(() => {
-    if (countryId === "custom") {
-      return customCallingCode.replace(/[^\d]/g, "");
-    }
-    return selectedCountry?.callingCode ?? "";
-  }, [countryId, customCallingCode, selectedCountry]);
-
-  const formattedDialNumber = useMemo(() => {
-    if (!dialTarget) {
-      return "";
-    }
-
-    if (dialTarget.startsWith("+")) {
-      return dialTarget;
-    }
-
-    if (dialDigits.length <= 6) {
-      return dialDigits;
-    }
-
-    if (!selectedCountry || !callingCode) {
-      return dialDigits;
-    }
-
-    const expectedLength = selectedCountry.nationalNumberLength;
-
-    // If a user pastes an international number (e.g. +91XXXXXXXXXX or 91XXXXXXXXXX),
-    // keep the user-entered country code and avoid adding it twice.
-    if (dialDigits.startsWith(callingCode)) {
-      return `+${dialDigits}`;
-    }
-
-    if (expectedLength && dialDigits.length !== expectedLength) {
-      return dialDigits;
-    }
-
-    return `+${callingCode}${dialDigits}`;
-  }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
     if (!activeCall) {
@@ -164,13 +118,7 @@ export function ManualDialerPage() {
     if (!dialTarget || callInProgress) {
       return;
     }
-
-    if (!dialTarget.startsWith("+") && dialDigits.length > 6 && !callingCode) {
-      setDialPadMessage("Select a country before calling this number.");
-      return;
-    }
-
-    const callNumber = formattedDialNumber || dialDigits;
+    const callNumber = dialTarget;
     if (!callNumber) {
       setDialPadMessage("Enter a valid phone number.");
       return;
@@ -320,9 +268,9 @@ export function ManualDialerPage() {
                 </label>
               ) : null}
 
-              {formattedDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
+              {dialTarget && dialDigits.length > 6 ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Dialing as: {formattedDialNumber}
+                  Dialing as: {dialTarget}
                 </p>
               ) : null}
 
