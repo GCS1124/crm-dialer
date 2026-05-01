@@ -97,7 +97,7 @@ export function ManualDialerPage() {
     }
 
     if (dialTarget.startsWith("+")) {
-      return dialTarget;
+      return dialTarget.slice(1);
     }
 
     if (dialDigits.length <= 6) {
