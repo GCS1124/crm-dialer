@@ -10,7 +10,7 @@ import {
 
 import { getQueueLeads } from "../lib/analytics";
 import { apiRequest } from "../lib/api";
-import { normalizeDialTarget } from "../lib/softphoneDialing";
+import { formatDialNumberForSession, normalizeDialTarget } from "../lib/softphoneDialing";
 import { supabase } from "../lib/supabase";
 import type {
   ActiveCall,
@@ -91,6 +91,12 @@ function buildMicrophoneBlockedMessage(openedSystemDialer: boolean) {
   return openedSystemDialer
     ? "Browser microphone access is blocked, so the system dialer was opened as a fallback. Keep this call active here and save the outcome when finished."
     : "Browser microphone access is blocked for this site. Allow microphone access from the address bar site settings, reload the page, and start the call again.";
+}
+
+function buildSipDeclinedFallbackMessage(openedSystemDialer: boolean) {
+  return openedSystemDialer
+    ? "Unified Voice declined the browser route, so the system dialer was opened as a fallback. Keep this call active here and save the outcome when finished."
+    : "Unified Voice declined the browser route. Keep this call active here if you place it externally, then save the outcome when finished.";
 }
 
 function openSystemDialer(phone: string) {
@@ -326,9 +332,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const voiceConfigSignatureRef = useRef<string | null>(null);
   const activeCallMetaRef = useRef<{
     leadId: string | null;
+    dialedNumber: string;
     startedAt: number;
     connected: boolean;
     userHangup: boolean;
+    fallbackOpened: boolean;
     sipStatusCode?: number | null;
     sipReasonPhrase?: string | null;
   } | null>(null);
@@ -959,6 +967,25 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             const sipSummary = meta.sipStatusCode
               ? `SIP ${meta.sipStatusCode}${meta.sipReasonPhrase ? ` ${meta.sipReasonPhrase}` : ""}`
               : null;
+
+            if (meta.sipStatusCode && meta.sipStatusCode >= 400 && !meta.fallbackOpened) {
+              meta.fallbackOpened = true;
+              const openedSystemDialer = openSystemDialer(meta.dialedNumber);
+              activeCallMetaRef.current = null;
+              void destroyVoiceClient().catch(() => undefined);
+              setActiveCall((existing) =>
+                existing && existing.startedAt === meta.startedAt
+                  ? {
+                      ...existing,
+                      status: "manual",
+                      recordingEnabled: false,
+                    }
+                  : existing,
+              );
+              setCallError(buildSipDeclinedFallbackMessage(openedSystemDialer));
+              return;
+            }
+
             failCallSession(
               sipSummary
                 ? `Call ended before connecting (${sipSummary}).`
@@ -1202,6 +1229,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     const callLeadId = lead?.id ?? requestedLeadId ?? null;
+    const formattedDialNumber = formatDialNumberForSession(queueDialedNumber, {
+      callerId: voiceConfig.callerId ?? activeSipProfile?.callerId,
+      timezone: currentUser?.timezone,
+    });
+    const outboundDialNumber = formattedDialNumber || queueDialedNumber;
     const displayName = (input?.displayName ?? lead?.fullName ?? queueDialedNumber).trim();
 
     if (!callLeadId && currentLeadId) {
@@ -1210,13 +1242,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     activeCallMetaRef.current = {
       leadId: callLeadId,
+      dialedNumber: outboundDialNumber,
       startedAt,
       connected: false,
       userHangup: false,
+      fallbackOpened: false,
     };
     setActiveCall({
       leadId: callLeadId,
-      dialedNumber: queueDialedNumber,
+      dialedNumber: outboundDialNumber,
       displayName,
       startedAt,
       status: "ringing",
@@ -1265,11 +1299,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
 
       await ensureMicrophoneAccess();
-      await client.call(normalizeDialTarget(queueDialedNumber, session.sipDomain, session.dialPrefix));
+      await client.call(normalizeDialTarget(outboundDialNumber, session.sipDomain, session.dialPrefix));
     } catch (error) {
       await destroyVoiceClient();
       if (isMicrophoneAccessError(error)) {
-        const openedSystemDialer = openSystemDialer(queueDialedNumber);
+        const openedSystemDialer = openSystemDialer(outboundDialNumber);
         activeCallMetaRef.current = null;
         setActiveCall((existing) =>
           existing && existing.startedAt === startedAt

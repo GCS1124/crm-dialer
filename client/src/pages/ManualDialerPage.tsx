@@ -8,7 +8,11 @@ import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { useAppState } from "../hooks/useAppState";
 import { cn, formatDuration, formatPhone } from "../lib/utils";
-import { sanitizeDialPadInput } from "../lib/softphoneDialing";
+import {
+  formatDialNumberForCountry,
+  inferDialCountryId,
+  sanitizeDialPadInput,
+} from "../lib/softphoneDialing";
 
 const dialPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
 
@@ -53,15 +57,13 @@ export function ManualDialerPage() {
     const stored = localStorage.getItem("crm-dialer-manual-dial-country");
     if (stored && (stored === "US" || stored === "IN" || stored === "custom")) {
       setCountryId(stored);
-    } else if (currentUser?.timezone?.includes("Kolkata")) {
-      setCountryId("IN");
-    } else if (voiceConfig.callerId) {
-      const callerDigits = voiceConfig.callerId.replace(/[^\d]/g, "");
-      if (callerDigits.startsWith("1")) {
-        setCountryId("US");
-      } else if (callerDigits.startsWith("91")) {
-        setCountryId("IN");
-      }
+    } else {
+      setCountryId(
+        inferDialCountryId({
+          callerId: voiceConfig.callerId,
+          timezone: currentUser?.timezone,
+        }),
+      );
     }
 
     const storedCallingCode = localStorage.getItem("crm-dialer-manual-dial-custom-code");
@@ -89,32 +91,10 @@ export function ManualDialerPage() {
   }, [countryId, customCallingCode, selectedCountry]);
 
   const formattedDialNumber = useMemo(() => {
-    if (!dialTarget) {
-      return "";
-    }
-
-    if (dialTarget.startsWith("+")) {
-      return dialTarget;
-    }
-
-    if (dialDigits.length <= 6) {
-      return dialDigits;
-    }
-
-    if (!callingCode) {
-      return dialDigits;
-    }
-
-    if (dialDigits.startsWith(callingCode)) {
-      return `+${dialDigits}`;
-    }
-
-    const expectedLength = selectedCountry?.nationalNumberLength ?? null;
-    if (expectedLength && dialDigits.length !== expectedLength) {
-      return dialDigits;
-    }
-
-    return `+${callingCode}${dialDigits}`;
+    return formatDialNumberForCountry(dialTarget, {
+      callingCode,
+      nationalNumberLength: selectedCountry?.nationalNumberLength ?? null,
+    });
   }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
