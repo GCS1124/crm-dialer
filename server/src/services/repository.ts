@@ -7,6 +7,9 @@ import type {
   ApiLeadStatus,
   ApiSipProfile,
   ApiUser,
+  QueueFilter,
+  QueueProgressRecord,
+  QueueSort,
   CreateCallLogInput,
   CreateSipProfileInput,
   CreateUserInput,
@@ -46,6 +49,32 @@ export async function listUsers() {
 
 export async function listLeads(currentUser: ApiUser) {
   return (await getRepository()).listLeads(currentUser);
+}
+
+export async function getQueueProgress(currentUser: ApiUser, queueKey?: string): Promise<QueueProgressRecord[]> {
+  return (await getRepository()).getQueueProgress(currentUser, queueKey);
+}
+
+export async function saveQueueProgress(
+  input: {
+    queueScope: string;
+    queueSort: QueueSort;
+    queueFilter: QueueFilter;
+    currentLeadId: string | null;
+    currentPhoneIndex: number;
+  },
+  currentUser: ApiUser,
+) {
+  return (await getRepository()).saveQueueProgress(input, currentUser);
+}
+
+export async function resetQueueProgress(
+  currentUser: ApiUser,
+  queueScope: string,
+  queueSort: QueueSort,
+  queueFilter: QueueFilter,
+) {
+  return (await getRepository()).resetQueueProgress(currentUser, queueScope, queueSort, queueFilter);
 }
 
 export async function listCallLogs(currentUser: ApiUser) {

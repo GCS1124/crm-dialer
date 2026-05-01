@@ -2,12 +2,16 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 
 import {
+  getQueueProgress,
   getActiveSipProfile,
   getUserById,
   getVoiceIdentity,
   listSipProfiles,
+  listLeads,
   saveDisposition,
+  saveQueueProgress,
 } from "../services/repository.js";
+import { advanceQueueCursor, buildQueueItems, selectQueueState } from "../services/queueService.js";
 import {
   createVoiceSessionPayload,
   createVoiceSessionPayloadFromSipProfile,
@@ -35,6 +39,21 @@ const dispositionSchema = z.object({
   outcomeSummary: z.string(),
   durationSeconds: z.number().nonnegative(),
   recordingEnabled: z.boolean().default(false),
+  queueScope: z.string().trim().min(1).max(128).default("default"),
+  queueSort: z.enum(["priority", "newest", "callback_due"]).default("priority"),
+  queueFilter: z.enum([
+    "all",
+    "new",
+    "contacted",
+    "callback_due",
+    "follow_up",
+    "qualified",
+    "appointment_booked",
+    "closed_won",
+    "closed_lost",
+    "invalid",
+  ]).default("all"),
+  currentPhoneIndex: z.number().int().nonnegative().default(0),
 });
 
 async function getCurrentUser(res: Response) {
@@ -105,5 +124,43 @@ export async function dispositionController(req: Request, res: Response) {
   };
 
   await saveDisposition(dispositionInput, currentUser);
-  return res.json({ success: true });
+
+  const leads = await listLeads(currentUser);
+  const queueItems = buildQueueItems(
+    leads,
+    currentUser,
+    parsed.data.queueSort,
+    parsed.data.queueFilter,
+    parsed.data.queueScope,
+  );
+  const queueKey = `${parsed.data.queueScope}:${parsed.data.queueSort}:${parsed.data.queueFilter}`;
+  const nextCursor = advanceQueueCursor(
+    queueItems,
+    {
+      currentLeadId: parsed.data.leadId,
+      currentPhoneIndex: parsed.data.currentPhoneIndex,
+    },
+    "completed",
+  );
+  const savedProgress = await saveQueueProgress(
+    {
+      queueScope: parsed.data.queueScope,
+      queueSort: parsed.data.queueSort,
+      queueFilter: parsed.data.queueFilter,
+      currentLeadId: nextCursor.currentLeadId,
+      currentPhoneIndex: nextCursor.currentPhoneIndex,
+    },
+    currentUser,
+  );
+
+  const queueProgress = (await getQueueProgress(currentUser, queueKey))[0] ?? savedProgress;
+  const queueState = selectQueueState(
+    queueItems,
+    queueProgress,
+    parsed.data.queueScope,
+    parsed.data.queueSort,
+    parsed.data.queueFilter,
+  );
+
+  return res.json({ success: true, queueState });
 }

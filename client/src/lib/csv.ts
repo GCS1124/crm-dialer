@@ -201,11 +201,19 @@ function buildNotes(baseNotes: string, extras: string[]) {
     .trim();
 }
 
+function isTemplateInstructionRow(rawRow: Record<string, unknown>) {
+  return Object.values(rawRow).some((rawValue) => /^notes?:/i.test(normalizeCellValue(rawValue)));
+}
+
 function parseMappedRows(rawRows: Array<Record<string, unknown>>) {
   let invalidRows = 0;
   const rows: LeadImportRecord[] = [];
 
   rawRows.forEach((rawRow) => {
+    if (isTemplateInstructionRow(rawRow)) {
+      return;
+    }
+
     const row = createEmptyRow();
     const scratch = {
       firstName: "",

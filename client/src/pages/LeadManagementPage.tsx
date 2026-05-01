@@ -9,6 +9,7 @@ import { Card } from "../components/shared/Card";
 import { EmptyState } from "../components/shared/EmptyState";
 import { MetricCard } from "../components/shared/MetricCard";
 import { PageHeader } from "../components/shared/PageHeader";
+import { ImportTemplateCard } from "../components/import/ImportTemplateCard";
 import { useAppState } from "../hooks/useAppState";
 import { parseLeadFile } from "../lib/csv";
 import { formatDateTime, getInsightTone, getLeadStatusTone, getPriorityTone } from "../lib/utils";
@@ -187,6 +188,8 @@ export function LeadManagementPage() {
           tone={uploadTone === "success" ? "success" : "error"}
         />
       ) : null}
+
+      <ImportTemplateCard />
 
       <div className="grid gap-3 xl:grid-cols-5">
         {highlightedMetrics.map((metric) => (

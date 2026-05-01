@@ -4,6 +4,8 @@ import { env } from "../config/env.js";
 import { supabaseAdmin } from "./supabaseAdmin.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { buildAiAssist } from "./aiAssistService.js";
+import { buildLeadDialNumbers } from "./phoneNumberService.js";
+import { getQueueKey, toQueueProgressRecord } from "./queueService.js";
 import {
   assignSipProfileToUser as assignStoredSipProfileToUser,
   createSipProfile as createStoredSipProfile,
@@ -28,6 +30,9 @@ import type {
   ApiSipProfile,
   ApiUser,
   ApiUserRole,
+  QueueFilter,
+  QueueProgressRecord,
+  QueueSort,
   CreateCallLogInput,
   CreateSipProfileInput,
   CreateUserInput,
@@ -57,6 +62,7 @@ interface DbLeadRow {
   full_name: string;
   phone: string;
   alt_phone: string | null;
+  phone_numbers: string[] | null;
   email: string | null;
   company: string | null;
   job_title: string | null;
@@ -120,6 +126,18 @@ interface DbCallbackRow {
   priority: ApiLeadPriority;
   status: "scheduled" | "completed" | "overdue" | "cancelled";
   created_at: string;
+}
+
+interface DbQueueProgressRow {
+  user_id: string;
+  queue_key: string;
+  queue_scope: string;
+  queue_sort: QueueSort;
+  queue_filter: QueueFilter;
+  current_lead_id: string | null;
+  current_phone_index: number;
+  created_at: string;
+  updated_at: string;
 }
 
 function handleError(error: PostgrestError | Error | null, message: string): never {
@@ -319,7 +337,7 @@ async function fetchLeadRows(currentUser?: ApiUser) {
   let query = supabaseAdmin
     .from("leads")
     .select(
-      "id, external_id, full_name, phone, alt_phone, email, company, job_title, location, source, interest, status, notes, last_contacted, assigned_agent, callback_time, priority, lead_score, created_at, updated_at",
+      "id, external_id, full_name, phone, alt_phone, phone_numbers, email, company, job_title, location, source, interest, status, notes, last_contacted, assigned_agent, callback_time, priority, lead_score, created_at, updated_at",
     )
     .order("created_at", { ascending: false });
 
@@ -430,7 +448,7 @@ async function getLeadRowById(leadId: string) {
   const { data, error } = await supabaseAdmin
     .from("leads")
     .select(
-      "id, external_id, full_name, phone, alt_phone, email, company, job_title, location, source, interest, status, notes, last_contacted, assigned_agent, callback_time, priority, lead_score, created_at, updated_at",
+      "id, external_id, full_name, phone, alt_phone, phone_numbers, email, company, job_title, location, source, interest, status, notes, last_contacted, assigned_agent, callback_time, priority, lead_score, created_at, updated_at",
     )
     .eq("id", leadId)
     .maybeSingle();
@@ -517,6 +535,20 @@ function groupByLeadId<T extends { lead_id: string }>(items: T[]) {
   return grouped;
 }
 
+function mapQueueProgressRow(row: DbQueueProgressRow): QueueProgressRecord {
+  return {
+    userId: row.user_id,
+    queueKey: row.queue_key,
+    queueScope: row.queue_scope,
+    queueSort: row.queue_sort,
+    queueFilter: row.queue_filter,
+    currentLeadId: row.current_lead_id,
+    currentPhoneIndex: row.current_phone_index,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 async function buildLeadPayload(currentUser?: ApiUser) {
   const users = await fetchUsers();
   const usersById = new Map(users.map((user) => [user.id, user]));
@@ -535,12 +567,20 @@ async function buildLeadPayload(currentUser?: ApiUser) {
       ? usersById.get(lead.assigned_agent) ?? null
       : null;
     const activeCallback = (callbacksByLead.get(lead.id) ?? [])[0];
+    const phoneNumbers = buildLeadDialNumbers({
+      phone: lead.phone,
+      altPhone: lead.alt_phone ?? "",
+      phoneNumbers: lead.phone_numbers ?? [],
+    });
+    const primaryPhone = phoneNumbers[0] ?? lead.phone;
+    const secondaryPhone = phoneNumbers[1] ?? lead.alt_phone ?? "";
 
     return {
       id: lead.id,
       fullName: lead.full_name,
-      phone: lead.phone,
-      altPhone: lead.alt_phone ?? "",
+      phone: primaryPhone,
+      altPhone: secondaryPhone,
+      phoneNumbers,
       email: lead.email ?? "",
       company: lead.company ?? "",
       jobTitle: lead.job_title ?? "",
@@ -571,7 +611,7 @@ async function buildLeadPayload(currentUser?: ApiUser) {
           id: call.id,
           leadId: lead.id,
           leadName: lead.full_name,
-          phone: lead.phone,
+          phone: primaryPhone,
           createdAt: call.created_at,
           agentId: call.agent_id ?? "",
           agentName: call.agent_id
@@ -779,6 +819,88 @@ export async function listUsers() {
 export async function listLeads(currentUser: ApiUser) {
   const { leads } = await buildLeadPayload(currentUser);
   return leads;
+}
+
+async function fetchQueueProgressRows(currentUser: ApiUser, queueKey?: string) {
+  let query = supabaseAdmin
+    .from("queue_progress")
+    .select(
+      "user_id, queue_key, queue_scope, queue_sort, queue_filter, current_lead_id, current_phone_index, created_at, updated_at",
+    )
+    .eq("user_id", currentUser.id)
+    .order("updated_at", { ascending: false });
+
+  if (queueKey) {
+    query = query.eq("queue_key", queueKey);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    handleError(error, "Unable to load queue progress");
+  }
+
+  return (data ?? []) as DbQueueProgressRow[];
+}
+
+export async function getQueueProgress(currentUser: ApiUser, queueKey?: string) {
+  const rows = await fetchQueueProgressRows(currentUser, queueKey);
+  return rows.map(mapQueueProgressRow);
+}
+
+export async function saveQueueProgress(
+  input: {
+    queueScope: string;
+    queueSort: QueueSort;
+    queueFilter: QueueFilter;
+    currentLeadId: string | null;
+    currentPhoneIndex: number;
+  },
+  currentUser: ApiUser,
+) {
+  const now = new Date().toISOString();
+  const queueKey = getQueueKey(input.queueScope, input.queueSort, input.queueFilter);
+  const payload = {
+    user_id: currentUser.id,
+    queue_key: queueKey,
+    queue_scope: input.queueScope,
+    queue_sort: input.queueSort,
+    queue_filter: input.queueFilter,
+    current_lead_id: input.currentLeadId,
+    current_phone_index: Math.max(0, input.currentPhoneIndex),
+    updated_at: now,
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from("queue_progress")
+    .upsert(payload, { onConflict: "user_id,queue_key" })
+    .select(
+      "user_id, queue_key, queue_scope, queue_sort, queue_filter, current_lead_id, current_phone_index, created_at, updated_at",
+    )
+    .single();
+
+  if (error) {
+    handleError(error, "Unable to save queue progress");
+  }
+
+  return mapQueueProgressRow(data as DbQueueProgressRow);
+}
+
+export async function resetQueueProgress(
+  currentUser: ApiUser,
+  queueScope: string,
+  queueSort: QueueSort,
+  queueFilter: QueueFilter,
+) {
+  const queueKey = getQueueKey(queueScope, queueSort, queueFilter);
+  const { error } = await supabaseAdmin
+    .from("queue_progress")
+    .delete()
+    .eq("user_id", currentUser.id)
+    .eq("queue_key", queueKey);
+
+  if (error) {
+    handleError(error, "Unable to reset queue progress");
+  }
 }
 
 export async function listCallLogs(currentUser: ApiUser) {
@@ -1055,6 +1177,11 @@ export async function importLeads(
         full_name: record.fullName.trim(),
         phone: normalizedPhone,
         alt_phone: record.altPhone.trim() || null,
+        phone_numbers: buildLeadDialNumbers({
+          phone: normalizedPhone,
+          altPhone: record.altPhone.trim(),
+          phoneNumbers: record.phoneNumbers,
+        }),
         email: normalizedEmail || null,
         company: record.company.trim() || null,
         job_title: record.jobTitle.trim() || null,
@@ -1717,6 +1844,7 @@ export async function deleteWorkspaceUser(userId: string, currentUser: ApiUser) 
     supabaseAdmin.from("callbacks").update({ owner_id: null, updated_at: now }).eq("owner_id", userId),
     supabaseAdmin.from("appointments").update({ owner_id: null }).eq("owner_id", userId),
     supabaseAdmin.from("audit_logs").update({ actor_id: null }).eq("actor_id", userId),
+    supabaseAdmin.from("queue_progress").delete().eq("user_id", userId),
     supabaseAdmin.from("user_sip_preferences").delete().eq("user_id", userId),
   ];
 

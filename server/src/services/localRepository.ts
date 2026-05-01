@@ -8,6 +8,8 @@ import { env } from "../config/env.js";
 import { buildAiAssist } from "./aiAssistService.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { getRuntimeStatus } from "./runtimeMode.js";
+import { buildLeadDialNumbers } from "./phoneNumberService.js";
+import { getQueueKey, toQueueProgressRecord } from "./queueService.js";
 import { getVoiceFieldStatus, getVoiceProviderConfig } from "./voiceProviderService.js";
 import { buildSipWorkspaceExposure, canManageWorkspaceAdmin } from "./workspaceAccessService.js";
 import type {
@@ -28,6 +30,10 @@ import type {
   CreateCallLogInput,
   CreateSipProfileInput,
   CreateUserInput,
+  QueueCursor,
+  QueueFilter,
+  QueueProgressRecord,
+  QueueSort,
   SaveDispositionInput,
   SignupInput,
   StoredSipProfile,
@@ -72,17 +78,27 @@ interface LocalStoreState {
   leads: ApiLead[];
   sipProfiles: LocalSipProfileRecord[];
   userSipPreferences: LocalUserSipPreferenceRecord[];
+  queueProgress: QueueProgressRecord[];
 }
 
-const storePath = process.env.VERCEL
-  ? join(tmpdir(), "crm-dialer", "local-dev-store.json")
-  : join(
-      dirname(fileURLToPath(import.meta.url)),
-      "..",
-      "..",
-      "data",
-      "local-dev-store.json",
-    );
+function resolveStorePath() {
+  const override = process.env.CRM_DIALER_LOCAL_STORE_PATH?.trim();
+  if (override) {
+    return override;
+  }
+
+  return process.env.VERCEL
+    ? join(tmpdir(), "crm-dialer", "local-dev-store.json")
+    : join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "..",
+        "data",
+        "local-dev-store.json",
+      );
+}
+
+const storePath = resolveStorePath();
 
 let cachedState: LocalStoreState | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
@@ -187,6 +203,21 @@ function mapUser(user: LocalUserRecord): ApiUser {
   return rest;
 }
 
+function normalizeLeadDialNumbers(lead: ApiLead): ApiLead {
+  const phoneNumbers = buildLeadDialNumbers({
+    phone: lead.phone,
+    altPhone: lead.altPhone,
+    phoneNumbers: lead.phoneNumbers,
+  });
+
+  return {
+    ...lead,
+    phone: phoneNumbers[0] ?? lead.phone,
+    altPhone: phoneNumbers[1] ?? lead.altPhone,
+    phoneNumbers,
+  };
+}
+
 function mapUsers(users: LocalUserRecord[]) {
   return users.map(mapUser).sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -277,7 +308,7 @@ function buildCallRecord(input: {
     id: input.id ?? randomUUID(),
     leadId: input.lead.id,
     leadName: input.lead.fullName,
-    phone: input.lead.phone,
+    phone: input.lead.phoneNumbers?.[0] ?? input.lead.phone,
     createdAt: input.createdAt ?? nowIso(),
     agentId: input.agent.id,
     agentName: input.agent.name,
@@ -669,13 +700,14 @@ function createInitialState(): LocalStoreState {
   const createdAt = nowIso();
 
   return {
-    version: 2,
+    version: 3,
     createdAt,
     updatedAt: createdAt,
     users,
     leads: createSeedLeads(users),
     sipProfiles: [],
     userSipPreferences: [],
+    queueProgress: [],
   };
 }
 
@@ -765,9 +797,10 @@ async function loadState() {
     cachedState = createInitialState();
   }
 
-  cachedState.version = 2;
+  cachedState.version = 3;
   cachedState.sipProfiles ??= [];
   cachedState.userSipPreferences ??= [];
+  cachedState.queueProgress ??= [];
   ensureDefaultSipProfileRecord(cachedState);
   await persistState(cachedState);
 
@@ -989,9 +1022,9 @@ export async function getWorkspace(currentUser: ApiUser): Promise<WorkspacePaylo
     currentUser.role === "agent"
       ? state.leads.filter((lead) => lead.assignedAgentId === currentUser.id)
       : state.leads;
-  const scopedLeads = clone(leads).sort(
-    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
-  );
+  const scopedLeads = clone(leads)
+    .map((lead) => normalizeLeadDialNumbers(lead))
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
   const visibleSipProfiles = getVisibleSipProfiles(state, currentUser);
   const activePreference = getActiveSipProfilePreference(state, currentUser.id);
   const assignedSipProfileRecord = activePreference?.activeSipProfileId
@@ -1206,6 +1239,11 @@ export async function importLeads(
         fullName,
         phone,
         altPhone: record.altPhone.trim(),
+        phoneNumbers: buildLeadDialNumbers({
+          phone,
+          altPhone: record.altPhone.trim(),
+          phoneNumbers: record.phoneNumbers,
+        }),
         email,
         company: record.company.trim(),
         jobTitle: record.jobTitle.trim(),
@@ -1723,10 +1761,85 @@ export async function deleteWorkspaceUser(userId: string, currentUser: ApiUser) 
         preference.userId !== userId &&
         !ownedProfileIds.includes(preference.activeSipProfileId ?? ""),
     );
+    state.queueProgress = state.queueProgress.filter((entry) => entry.userId !== userId);
     state.users = state.users.filter((item) => item.id !== userId);
   });
 }
 
 export function getVoiceIdentity(user: ApiUser) {
   return sanitizeIdentity(`${user.id}_${user.email}`);
+}
+
+export interface SaveQueueProgressInput {
+  queueScope: string;
+  queueSort: QueueSort;
+  queueFilter: QueueFilter;
+  currentLeadId: string | null;
+  currentPhoneIndex: number;
+}
+
+export async function getQueueProgress(currentUser: ApiUser, queueKey?: string) {
+  const state = await getSnapshot();
+  return state.queueProgress
+    .filter((entry) => entry.userId === currentUser.id && (!queueKey || entry.queueKey === queueKey))
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+    .map((entry) => clone(entry));
+}
+
+export async function saveQueueProgress(
+  input: SaveQueueProgressInput,
+  currentUser: ApiUser,
+) {
+  return withWrite((state) => {
+    const queueKey = getQueueKey(input.queueScope, input.queueSort, input.queueFilter);
+    const now = nowIso();
+    const nextRecord = {
+      ...toQueueProgressRecord(
+        currentUser.id,
+        input.queueScope,
+        input.queueSort,
+        input.queueFilter,
+        {
+          currentLeadId: input.currentLeadId,
+          currentPhoneIndex: Math.max(0, input.currentPhoneIndex),
+        },
+        {
+          createdAt: now,
+          updatedAt: now,
+        },
+      ),
+      updatedAt: now,
+    };
+
+    const existingIndex = state.queueProgress.findIndex(
+      (entry) => entry.userId === currentUser.id && entry.queueKey === queueKey,
+    );
+
+    if (existingIndex >= 0) {
+      state.queueProgress[existingIndex] = {
+        ...state.queueProgress[existingIndex],
+        ...nextRecord,
+        createdAt: state.queueProgress[existingIndex].createdAt,
+        updatedAt: now,
+      };
+      return clone(state.queueProgress[existingIndex]);
+    }
+
+    state.queueProgress.push(nextRecord);
+    return clone(nextRecord);
+  });
+}
+
+export async function resetQueueProgress(
+  currentUser: ApiUser,
+  queueScope: string,
+  queueSort: QueueSort,
+  queueFilter: QueueFilter,
+) {
+  await withWrite((state) => {
+    const queueKey = getQueueKey(queueScope, queueSort, queueFilter);
+    state.queueProgress = state.queueProgress.filter(
+      (entry) => !(entry.userId === currentUser.id && entry.queueKey === queueKey),
+    );
+  });
 }

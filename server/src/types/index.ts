@@ -2,6 +2,10 @@ export type ApiUserRole = "admin" | "team_leader" | "agent";
 
 export type ApiLeadPriority = "Low" | "Medium" | "High" | "Urgent";
 
+export type QueueSort = "priority" | "newest" | "callback_due";
+
+export type QueueFilter = "all" | ApiLeadStatus;
+
 export type ApiLeadStatus =
   | "new"
   | "contacted"
@@ -96,6 +100,7 @@ export interface ApiLead {
   fullName: string;
   phone: string;
   altPhone: string;
+  phoneNumbers?: string[];
   email: string;
   company: string;
   jobTitle: string;
@@ -123,6 +128,7 @@ export interface ApiLeadImportRecord {
   fullName: string;
   phone: string;
   altPhone: string;
+  phoneNumbers?: string[];
   email: string;
   company: string;
   jobTitle: string;
@@ -368,6 +374,44 @@ export interface WorkspacePayload {
   sipProfiles: ApiSipProfile[];
   activeSipProfile: ApiSipProfile | null;
   sipProfileSelectionRequired: boolean;
+}
+
+export interface QueueCursor {
+  currentLeadId: string | null;
+  currentPhoneIndex: number;
+}
+
+export interface QueueItem {
+  queueKey: string;
+  queueScope: string;
+  queueSort: QueueSort;
+  queueFilter: QueueFilter;
+  leadId: string;
+  leadName: string;
+  phoneIndex: number;
+  phoneNumber: string;
+  numberCount: number;
+}
+
+export interface QueueProgressRecord extends QueueCursor {
+  userId: string;
+  queueKey: string;
+  queueScope: string;
+  queueSort: QueueSort;
+  queueFilter: QueueFilter;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QueueState {
+  queueKey: string;
+  queueScope: string;
+  queueSort: QueueSort;
+  queueFilter: QueueFilter;
+  currentItem: QueueItem | null;
+  nextItem: QueueItem | null;
+  items: QueueItem[];
+  progress: QueueProgressRecord | null;
 }
 
 export interface CreateUserInput {

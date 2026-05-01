@@ -21,6 +21,7 @@ import type {
   LeadStatus,
   QueueFilter,
   QueueSort,
+  QueueState,
   SaveDispositionInput,
   SipProfile,
   ThemeMode,
@@ -305,6 +306,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
   const [autoDialCountdown, setAutoDialCountdown] = useState<number | null>(null);
   const [currentLeadId, setCurrentLeadId] = useState<string | null>(null);
+  const [currentPhoneIndex, setCurrentPhoneIndex] = useState(0);
+  const [queueCursorHydrated, setQueueCursorHydrated] = useState(false);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [wrapUpLeadId, setWrapUpLeadId] = useState<string | null>(null);
   const [wrapUpDurationSeconds, setWrapUpDurationSeconds] = useState(0);
@@ -322,25 +325,50 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const autoDialTimerRef = useRef<number | null>(null);
   const lastAutoDialLeadIdRef = useRef<string | null>(null);
   const notifiedCallbacksRef = useRef<Set<string>>(new Set());
+  const queueStateSignatureRef = useRef<string | null>(null);
 
   const queue = currentUser
     ? getQueueLeads(leads, currentUser.role, currentUser.id, queueSort, queueFilter)
     : [];
+  const queueScope = "default";
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
   useEffect(() => {
+    if (!queueCursorHydrated) {
+      return;
+    }
+
     if (!queue.length) {
       setCurrentLeadId(null);
+      setCurrentPhoneIndex(0);
       return;
     }
 
     if (!currentLeadId || !queue.some((lead) => lead.id === currentLeadId)) {
       setCurrentLeadId(queue[0].id);
+      setCurrentPhoneIndex(0);
     }
-  }, [queue, currentLeadId]);
+  }, [queue, currentLeadId, queueCursorHydrated]);
+
+  useEffect(() => {
+    if (!authToken || !currentUser || workspaceLoading) {
+      return;
+    }
+
+    const signature = `${queueScope}:${queueSort}:${queueFilter}`;
+    if (queueStateSignatureRef.current === signature) {
+      return;
+    }
+
+    void syncQueueCursorFromServer(authToken).catch((error) => {
+      const message =
+        error instanceof Error ? error.message : "Unable to sync the active queue cursor.";
+      setWorkspaceError(message);
+    });
+  }, [authToken, currentUser?.id, queueFilter, queueSort, queueScope, workspaceLoading]);
 
   useEffect(() => {
     return () => {
@@ -604,6 +632,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setSipProfiles(payload.sipProfiles);
       setActiveSipProfile(payload.activeSipProfile);
       setSipProfileSelectionRequired(payload.sipProfileSelectionRequired);
+      await syncQueueCursorFromServer(token);
       setWorkspaceError(null);
       setLastWorkspaceSyncAt(new Date().toISOString());
       return true;
@@ -619,6 +648,79 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function syncQueueCursorFromServer(tokenOverride?: string | null) {
+    const token = tokenOverride ?? authToken;
+    if (!token) {
+      return null;
+    }
+
+    const signature = `${queueScope}:${queueSort}:${queueFilter}`;
+    setQueueCursorHydrated(false);
+    const response = await apiRequest<QueueState>(
+      `/queue?sort=${encodeURIComponent(queueSort)}&filter=${encodeURIComponent(queueFilter)}&scope=${encodeURIComponent(queueScope)}`,
+      {
+        token,
+      },
+    );
+    setCurrentLeadId(response.currentItem?.leadId ?? null);
+    setCurrentPhoneIndex(response.currentItem?.phoneIndex ?? 0);
+    setQueueCursorHydrated(true);
+    queueStateSignatureRef.current = signature;
+    return response;
+  }
+
+  async function persistQueueCursor(nextLeadId: string | null, nextPhoneIndex: number) {
+    if (!authToken || !currentUser) {
+      return null;
+    }
+
+    const response = await apiRequest<QueueState>("/queue", {
+      method: "PUT",
+      token: authToken,
+      body: JSON.stringify({
+        queueScope,
+        queueSort,
+        queueFilter,
+        currentLeadId: nextLeadId,
+        currentPhoneIndex: nextPhoneIndex,
+      }),
+    });
+
+    setCurrentLeadId(response.currentItem?.leadId ?? null);
+    setCurrentPhoneIndex(response.currentItem?.phoneIndex ?? 0);
+    setQueueCursorHydrated(true);
+    return response;
+  }
+
+  async function advanceQueueCursor(
+    outcome: "completed" | "failed" | "skipped" | "invalid" | "restart",
+    currentLeadIdOverride?: string | null,
+    currentPhoneIndexOverride?: number,
+  ) {
+    if (!authToken || !currentUser) {
+      return null;
+    }
+
+    const response = await apiRequest<QueueState>("/queue/advance", {
+      method: "POST",
+      token: authToken,
+      body: JSON.stringify({
+        queueScope,
+        queueSort,
+        queueFilter,
+        currentLeadId: currentLeadIdOverride ?? currentLeadId,
+        currentPhoneIndex:
+          typeof currentPhoneIndexOverride === "number" ? currentPhoneIndexOverride : currentPhoneIndex,
+        outcome,
+      }),
+    });
+
+    setCurrentLeadId(response.currentItem?.leadId ?? null);
+    setCurrentPhoneIndex(response.currentItem?.phoneIndex ?? 0);
+    setQueueCursorHydrated(true);
+    return response;
+  }
+
   function cleanupSession() {
     setAuthToken(null);
     setCurrentUser(null);
@@ -628,21 +730,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSettingsStatus(emptySettingsStatus);
     setVoiceConfig(emptyVoiceConfig);
     setSipProfiles([]);
-    setActiveSipProfile(null);
-    setSipProfileSelectionRequired(false);
-    setCallError(null);
-    setWorkspaceError(null);
-    setLastWorkspaceSyncAt(null);
-    setAutoDialCountdown(null);
-    setCurrentLeadId(null);
-    setActiveCall(null);
-    setWrapUpLeadId(null);
-    setWrapUpDurationSeconds(0);
-    lastAutoDialLeadIdRef.current = null;
-    if (autoDialTimerRef.current) {
-      window.clearInterval(autoDialTimerRef.current);
-      autoDialTimerRef.current = null;
-    }
+      setActiveSipProfile(null);
+      setSipProfileSelectionRequired(false);
+      setCallError(null);
+      setWorkspaceError(null);
+      setLastWorkspaceSyncAt(null);
+      setAutoDialCountdown(null);
+      setCurrentLeadId(null);
+      setCurrentPhoneIndex(0);
+      setQueueCursorHydrated(false);
+      setActiveCall(null);
+      setWrapUpLeadId(null);
+      setWrapUpDurationSeconds(0);
+      lastAutoDialLeadIdRef.current = null;
+      queueStateSignatureRef.current = null;
+      if (autoDialTimerRef.current) {
+        window.clearInterval(autoDialTimerRef.current);
+        autoDialTimerRef.current = null;
+      }
     activeCallMetaRef.current = null;
     const client = voiceClientRef.current;
     voiceClientRef.current = null;
@@ -985,6 +1090,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!wrapUpLeadId) {
       lastAutoDialLeadIdRef.current = null;
       setCurrentLeadId(leadId);
+      setCurrentPhoneIndex(0);
+      void persistQueueCursor(leadId, 0).catch(() => undefined);
     }
   };
 
@@ -995,7 +1102,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const currentIndex = queue.findIndex((lead) => lead.id === currentLeadId);
     lastAutoDialLeadIdRef.current = null;
-    setCurrentLeadId(queue[Math.max(0, currentIndex - 1)]?.id ?? queue[0].id);
+    const nextLeadId = queue[Math.max(0, currentIndex - 1)]?.id ?? queue[0].id;
+    setCurrentLeadId(nextLeadId);
+    setCurrentPhoneIndex(0);
+    void persistQueueCursor(nextLeadId, 0).catch(() => undefined);
   };
 
   const nextLead = () => {
@@ -1005,7 +1115,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const currentIndex = queue.findIndex((lead) => lead.id === currentLeadId);
     lastAutoDialLeadIdRef.current = null;
-    setCurrentLeadId(queue[Math.min(queue.length - 1, currentIndex + 1)]?.id ?? queue[0].id);
+    const nextLeadId = queue[Math.min(queue.length - 1, currentIndex + 1)]?.id ?? queue[0].id;
+    setCurrentLeadId(nextLeadId);
+    setCurrentPhoneIndex(0);
+    void persistQueueCursor(nextLeadId, 0).catch(() => undefined);
   };
 
   const skipLead = () => {
@@ -1016,7 +1129,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const currentIndex = queue.findIndex((lead) => lead.id === currentLeadId);
     const next = queue[currentIndex + 1] ?? queue[currentIndex - 1] ?? null;
     lastAutoDialLeadIdRef.current = null;
-    setCurrentLeadId(next?.id ?? null);
+    const nextLeadId = next?.id ?? null;
+    setCurrentLeadId(nextLeadId);
+    setCurrentPhoneIndex(0);
+    void persistQueueCursor(nextLeadId, 0).catch(() => undefined);
   };
 
   const markLeadInvalid = async () => {
@@ -1024,14 +1140,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const nextId = queue.find((lead) => lead.id !== currentLeadId)?.id ?? null;
     await apiRequest(`/leads/${currentLeadId}/invalid`, {
       method: "PATCH",
       token: authToken,
     });
+    await advanceQueueCursor("invalid", currentLeadId, currentPhoneIndex);
     await refreshWorkspace();
     lastAutoDialLeadIdRef.current = null;
-    setCurrentLeadId(nextId);
   };
 
   const startCall = async (input?: {
@@ -1063,13 +1178,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw new Error("Lead not found");
     }
 
-    const dialedNumber = (input?.phone ?? lead?.phone ?? "").trim();
-    if (!dialedNumber) {
+    const leadPhoneNumbers = lead?.phoneNumbers?.length
+      ? lead.phoneNumbers
+      : [lead?.phone ?? "", lead?.altPhone ?? ""].filter(Boolean);
+    const queueDialedNumber = (input?.phone ?? leadPhoneNumbers[currentPhoneIndex] ?? leadPhoneNumbers[0] ?? "").trim();
+    if (!queueDialedNumber) {
       throw new Error("Phone number not found");
     }
 
     const callLeadId = lead?.id ?? requestedLeadId ?? null;
-    const displayName = (input?.displayName ?? lead?.fullName ?? dialedNumber).trim();
+    const displayName = (input?.displayName ?? lead?.fullName ?? queueDialedNumber).trim();
 
     if (!callLeadId && currentLeadId) {
       lastAutoDialLeadIdRef.current = currentLeadId;
@@ -1083,13 +1201,27 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
     setActiveCall({
       leadId: callLeadId,
-      dialedNumber,
+      dialedNumber: queueDialedNumber,
       displayName,
       startedAt,
       status: "ringing",
       muted: false,
       recordingEnabled: voiceConfig.available,
     });
+
+    if (callLeadId) {
+      try {
+        await persistQueueCursor(callLeadId, currentPhoneIndex);
+      } catch (error) {
+        failCallSession(
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "Unable to save the active queue cursor before dialing.",
+          startedAt,
+        );
+        throw error;
+      }
+    }
 
     try {
       const { client, session } = await ensureVoiceClient();
@@ -1117,7 +1249,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      await client.call(normalizeDialTarget(dialedNumber, session.sipDomain, session.dialPrefix));
+      await client.call(normalizeDialTarget(queueDialedNumber, session.sipDomain, session.dialPrefix));
     } catch (error) {
       await destroyVoiceClient();
       failCallSession(
@@ -1126,6 +1258,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           : "The CRM softphone could not place the SIP call.",
         startedAt,
       );
+      if (callLeadId) {
+        await advanceQueueCursor("failed", callLeadId, currentPhoneIndex).catch(() => undefined);
+      }
       throw error;
     }
   };
@@ -1190,13 +1325,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const currentIndex = queue.findIndex((lead) => lead.id === wrapUpLeadId);
-    const nextLeadId =
-      queue.filter((lead) => lead.id !== wrapUpLeadId)[currentIndex] ??
-      queue.filter((lead) => lead.id !== wrapUpLeadId)[0] ??
-      null;
-
-    await apiRequest("/dialer/disposition", {
+    const response = await apiRequest<{ success: boolean; queueState?: QueueState }>("/dialer/disposition", {
       method: "POST",
       token: authToken,
       body: JSON.stringify({
@@ -1204,14 +1333,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         leadId: wrapUpLeadId,
         durationSeconds: wrapUpDurationSeconds || 60,
         recordingEnabled: activeCall?.recordingEnabled ?? voiceConfig.available,
+        queueScope,
+        queueSort,
+        queueFilter,
+        currentPhoneIndex,
       }),
     });
 
     lastAutoDialLeadIdRef.current = wrapUpLeadId;
     setWrapUpLeadId(null);
     setWrapUpDurationSeconds(0);
+    if (response.queueState?.currentItem) {
+      setCurrentLeadId(response.queueState.currentItem.leadId);
+      setCurrentPhoneIndex(response.queueState.currentItem.phoneIndex);
+    }
     await refreshWorkspace();
-    setCurrentLeadId(nextLeadId?.id ?? null);
   };
 
   const uploadLeads = async (records: LeadImportRecord[], assignToUserId?: string) => {

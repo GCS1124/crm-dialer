@@ -26,6 +26,7 @@ import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "
 
 import { ActivityTimeline } from "../components/dialer/ActivityTimeline";
 import { PostCallPanel } from "../components/dialer/PostCallPanel";
+import { ImportTemplateCard } from "../components/import/ImportTemplateCard";
 import { AlertBanner } from "../components/shared/AlertBanner";
 import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
@@ -301,6 +302,9 @@ export function PreviewDialerPage() {
                   Show all active
                 </Button>
               ) : null}
+            </div>
+            <div className="w-full max-w-md">
+              <ImportTemplateCard compact />
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               Accepted formats: `.csv`, `.xlsx`, `.xls`
