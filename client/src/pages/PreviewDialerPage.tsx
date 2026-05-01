@@ -368,11 +368,11 @@ export function PreviewDialerPage() {
         ) : null}
 
         {callError ? (
-          <div className="border-b border-rose-200 bg-rose-50/80 px-4 py-3 dark:border-rose-500/20 dark:bg-rose-950/20">
+          <div className="border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
             <AlertBanner
-              title="Softphone error"
+              title={manualCallActive ? "Manual calling mode" : "Softphone notice"}
               description={callError}
-              tone="error"
+              tone={manualCallActive ? "warning" : "error"}
             />
           </div>
         ) : null}

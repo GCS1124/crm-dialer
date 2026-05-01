@@ -42,6 +42,17 @@ const queueAdvanceSchema = queueProgressSchema.extend({
   outcome: z.enum(["completed", "failed", "skipped", "invalid", "restart"]).default("completed"),
 });
 
+type QueueStateInput = {
+  queueScope: string;
+  queueSort: QueueSort;
+  queueFilter: QueueFilter;
+};
+
+type QueueProgressInput = QueueStateInput & {
+  currentLeadId: string | null;
+  currentPhoneIndex: number;
+};
+
 async function getCurrentUser(res: Response) {
   const sessionUser = res.locals.user as { sub?: string } | undefined;
   if (!sessionUser?.sub) {
@@ -60,11 +71,26 @@ function logQueueEvent(event: string, details: Record<string, unknown>) {
   );
 }
 
-async function loadQueueState(currentUser: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, input: {
-  queueScope: string;
-  queueSort: QueueSort;
-  queueFilter: QueueFilter;
-}) {
+function normalizeQueueStateInput(input: Partial<QueueStateInput>): QueueStateInput {
+  return {
+    queueScope: input.queueScope ?? "default",
+    queueSort: input.queueSort ?? "priority",
+    queueFilter: input.queueFilter ?? "all",
+  };
+}
+
+function normalizeQueueProgressInput(input: Partial<QueueProgressInput>): QueueProgressInput {
+  return {
+    ...normalizeQueueStateInput(input),
+    currentLeadId: input.currentLeadId ?? null,
+    currentPhoneIndex: input.currentPhoneIndex ?? 0,
+  };
+}
+
+async function loadQueueState(
+  currentUser: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>,
+  input: QueueStateInput,
+) {
   const leads = await listLeads(currentUser);
   const queueKey = getQueueKey(input.queueScope, input.queueSort, input.queueFilter);
   const queueItems = buildQueueItems(
@@ -98,7 +124,8 @@ export async function getQueueController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid queue query" });
   }
 
-  const state = await loadQueueState(currentUser, parsed.data);
+  const queueInput = normalizeQueueStateInput(parsed.data);
+  const state = await loadQueueState(currentUser, queueInput);
   return res.json(state);
 }
 
@@ -113,8 +140,9 @@ export async function saveQueueController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid queue progress payload" });
   }
 
-  const saved = await saveQueueProgress(parsed.data, currentUser);
-  const state = await loadQueueState(currentUser, parsed.data);
+  const progressInput = normalizeQueueProgressInput(parsed.data);
+  const saved = await saveQueueProgress(progressInput, currentUser);
+  const state = await loadQueueState(currentUser, progressInput);
 
   logQueueEvent("queue_progress_saved", {
     userId: currentUser.id,
@@ -138,35 +166,36 @@ export async function advanceQueueController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid queue advance payload" });
   }
 
+  const progressInput = normalizeQueueProgressInput(parsed.data);
   const queueItems = buildQueueItems(
     await listLeads(currentUser),
     currentUser,
-    parsed.data.queueSort,
-    parsed.data.queueFilter,
-    parsed.data.queueScope,
+    progressInput.queueSort,
+    progressInput.queueFilter,
+    progressInput.queueScope,
   );
   const nextCursor =
     parsed.data.outcome === "restart"
       ? advanceQueueCursor(queueItems, null, "restart")
       : advanceQueueCursor(queueItems, {
-          currentLeadId: parsed.data.currentLeadId,
-          currentPhoneIndex: parsed.data.currentPhoneIndex,
+          currentLeadId: progressInput.currentLeadId,
+          currentPhoneIndex: progressInput.currentPhoneIndex,
         }, parsed.data.outcome);
 
   const saved = await saveQueueProgress(
     {
-      queueScope: parsed.data.queueScope,
-      queueSort: parsed.data.queueSort,
-      queueFilter: parsed.data.queueFilter,
+      queueScope: progressInput.queueScope,
+      queueSort: progressInput.queueSort,
+      queueFilter: progressInput.queueFilter,
       currentLeadId: nextCursor.currentLeadId,
       currentPhoneIndex: nextCursor.currentPhoneIndex,
     },
     currentUser,
   );
   const state = await loadQueueState(currentUser, {
-    queueScope: parsed.data.queueScope,
-    queueSort: parsed.data.queueSort,
-    queueFilter: parsed.data.queueFilter,
+    queueScope: progressInput.queueScope,
+    queueSort: progressInput.queueSort,
+    queueFilter: progressInput.queueFilter,
   });
 
   logQueueEvent("queue_progress_advanced", {
@@ -197,36 +226,37 @@ export async function restartQueueController(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid queue restart payload" });
   }
 
+  const queueInput = normalizeQueueStateInput(parsed.data);
   await resetQueueProgress(
     currentUser,
-    parsed.data.queueScope,
-    parsed.data.queueSort,
-    parsed.data.queueFilter,
+    queueInput.queueScope,
+    queueInput.queueSort,
+    queueInput.queueFilter,
   );
 
   const queueItems = buildQueueItems(
     await listLeads(currentUser),
     currentUser,
-    parsed.data.queueSort,
-    parsed.data.queueFilter,
-    parsed.data.queueScope,
+    queueInput.queueSort,
+    queueInput.queueFilter,
+    queueInput.queueScope,
   );
   const firstCursor = advanceQueueCursor(queueItems, null, "restart");
   await saveQueueProgress(
     {
-      queueScope: parsed.data.queueScope,
-      queueSort: parsed.data.queueSort,
-      queueFilter: parsed.data.queueFilter,
+      queueScope: queueInput.queueScope,
+      queueSort: queueInput.queueSort,
+      queueFilter: queueInput.queueFilter,
       currentLeadId: firstCursor.currentLeadId,
       currentPhoneIndex: firstCursor.currentPhoneIndex,
     },
     currentUser,
   );
 
-  const state = await loadQueueState(currentUser, parsed.data);
+  const state = await loadQueueState(currentUser, queueInput);
   logQueueEvent("queue_progress_restarted", {
     userId: currentUser.id,
-    queueKey: getQueueKey(parsed.data.queueScope, parsed.data.queueSort, parsed.data.queueFilter),
+    queueKey: getQueueKey(queueInput.queueScope, queueInput.queueSort, queueInput.queueFilter),
     queueSize: state.items.length,
   });
 

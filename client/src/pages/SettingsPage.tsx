@@ -72,6 +72,14 @@ export function SettingsPage() {
         sipPassword: Boolean(activeSipProfile.passwordPreview),
         callerId: isCallerId(activeSipProfile.callerId),
       }
+    : voiceConfig.source === "profile" && voiceConfig.available
+      ? {
+          websocketUrl: Boolean(voiceConfig.websocketUrl),
+          sipDomain: Boolean(voiceConfig.sipDomain),
+          sipUsername: Boolean(voiceConfig.username),
+          sipPassword: true,
+          callerId: Boolean(voiceConfig.callerId),
+        }
     : settingsStatus.voice.configuredFields;
   const missingVoiceFields = Object.entries(voiceFieldStatus)
     .filter(([, configured]) => !configured)

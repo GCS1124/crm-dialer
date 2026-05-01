@@ -76,6 +76,46 @@ function buildVoiceConfigSignature(session: VoiceSessionResponse, displayName: s
   });
 }
 
+function isMicrophoneAccessError(error: unknown) {
+  const candidate = error as { name?: unknown; message?: unknown } | null;
+  const name = typeof candidate?.name === "string" ? candidate.name : "";
+  const message = typeof candidate?.message === "string" ? candidate.message : "";
+
+  return (
+    ["NotAllowedError", "PermissionDeniedError", "SecurityError"].includes(name) ||
+    /permission denied|permission dismissed|not allowed|denied by system|microphone/i.test(message)
+  );
+}
+
+function buildMicrophoneBlockedMessage(openedSystemDialer: boolean) {
+  return openedSystemDialer
+    ? "Browser microphone access is blocked, so the system dialer was opened as a fallback. Keep this call active here and save the outcome when finished."
+    : "Browser microphone access is blocked for this site. Allow microphone access from the address bar site settings, reload the page, and start the call again.";
+}
+
+function openSystemDialer(phone: string) {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const normalized = phone.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  window.location.href = `tel:${encodeURIComponent(normalized)}`;
+  return true;
+}
+
+async function ensureMicrophoneAccess() {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return;
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  stream.getTracks().forEach((track) => track.stop());
+}
+
 function usePersistentState<T>(key: string, fallback: T) {
   const [value, setValue] = useState<T>(() => {
     const stored = localStorage.getItem(key);
@@ -838,6 +878,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const options: SimpleUserOptions = {
         aor: response.sipUri,
         media: {
+          constraints: {
+            audio: true,
+            video: false,
+          },
           remote: {
             audio: remoteAudio,
           },
@@ -1220,9 +1264,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      await ensureMicrophoneAccess();
       await client.call(normalizeDialTarget(queueDialedNumber, session.sipDomain, session.dialPrefix));
     } catch (error) {
       await destroyVoiceClient();
+      if (isMicrophoneAccessError(error)) {
+        const openedSystemDialer = openSystemDialer(queueDialedNumber);
+        activeCallMetaRef.current = null;
+        setActiveCall((existing) =>
+          existing && existing.startedAt === startedAt
+            ? {
+                ...existing,
+                status: "manual",
+                recordingEnabled: false,
+              }
+            : existing,
+        );
+        setCallError(buildMicrophoneBlockedMessage(openedSystemDialer));
+        return;
+      }
+
       failCallSession(
         error instanceof Error && error.message.trim()
           ? error.message
