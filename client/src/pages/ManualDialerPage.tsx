@@ -109,22 +109,18 @@ export function ManualDialerPage() {
     }
 
     const expectedLength = selectedCountry.nationalNumberLength;
-    let digits = dialDigits;
 
     // If a user pastes an international number (e.g. +91XXXXXXXXXX or 91XXXXXXXXXX),
-    // strip the country code and dial the national number. This matches the normal
-    // dialer flow where the backend/voice config applies any required trunk prefix.
-    if (digits.startsWith(callingCode) && digits.length === callingCode.length + expectedLength) {
-      digits = digits.slice(callingCode.length);
+    // keep the user-entered country code and avoid adding it twice.
+    if (dialDigits.startsWith(callingCode)) {
+      return dialDigits;
     }
 
-    // India trunks frequently expect national dialing (0 + 10 digits) for mobile calls.
-    // If we're dialing a 10-digit Indian mobile, include the trunk prefix.
-    if (selectedCountry.id === "IN" && digits.length === expectedLength && /^[6-9]\d{9}$/.test(digits)) {
-      return `0${digits}`;
+    if (expectedLength && dialDigits.length !== expectedLength) {
+      return dialDigits;
     }
 
-    return digits;
+    return `${callingCode}${dialDigits}`;
   }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
