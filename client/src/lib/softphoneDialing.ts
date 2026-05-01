@@ -26,7 +26,7 @@ export function normalizeDialTarget(phone: string, sipDomain: string, dialPrefix
     }
   }
 
-  const includePlus = isLikelyPhoneNumber && prefixHasPlus;
+  const includePlus = isLikelyPhoneNumber && (prefixHasPlus || phoneHasPlus);
   const userPart = includePlus ? `+${digits}` : digits;
   const baseTarget = `sip:${userPart}@${sipDomain}`;
   return digits.length >= 8 ? `${baseTarget};user=phone` : baseTarget;

@@ -44,6 +44,10 @@ export function ManualDialerPage() {
   const dialDigits = useMemo(() => dialTarget.replace(/[^\d]/g, ""), [dialTarget]);
   const callInProgress = Boolean(activeCall);
   const manualCallActive = activeCall?.status === "manual";
+  const selectedCountry = useMemo(
+    () => manualDialCountries.find((country) => country.id === countryId) ?? null,
+    [countryId],
+  );
 
   useEffect(() => {
     const stored = localStorage.getItem("crm-dialer-manual-dial-country");
@@ -76,6 +80,42 @@ export function ManualDialerPage() {
   useEffect(() => {
     localStorage.setItem("crm-dialer-manual-dial-custom-code", customCallingCode);
   }, [customCallingCode]);
+
+  const callingCode = useMemo(() => {
+    if (countryId === "custom") {
+      return customCallingCode.replace(/[^\d]/g, "");
+    }
+    return selectedCountry?.callingCode ?? "";
+  }, [countryId, customCallingCode, selectedCountry]);
+
+  const formattedDialNumber = useMemo(() => {
+    if (!dialTarget) {
+      return "";
+    }
+
+    if (dialTarget.startsWith("+")) {
+      return dialTarget;
+    }
+
+    if (dialDigits.length <= 6) {
+      return dialDigits;
+    }
+
+    if (!callingCode) {
+      return dialDigits;
+    }
+
+    if (dialDigits.startsWith(callingCode)) {
+      return `+${dialDigits}`;
+    }
+
+    const expectedLength = selectedCountry?.nationalNumberLength ?? null;
+    if (expectedLength && dialDigits.length !== expectedLength) {
+      return dialDigits;
+    }
+
+    return `+${callingCode}${dialDigits}`;
+  }, [dialDigits, dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
     if (!activeCall) {
@@ -118,7 +158,7 @@ export function ManualDialerPage() {
     if (!dialTarget || callInProgress) {
       return;
     }
-    const callNumber = dialTarget;
+    const callNumber = formattedDialNumber || dialTarget;
     if (!callNumber) {
       setDialPadMessage("Enter a valid phone number.");
       return;
@@ -268,9 +308,9 @@ export function ManualDialerPage() {
                 </label>
               ) : null}
 
-              {dialTarget && dialDigits.length > 6 ? (
+              {formattedDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Dialing as: {dialTarget}
+                  Dialing as: {formattedDialNumber}
                 </p>
               ) : null}
 
