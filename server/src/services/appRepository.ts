@@ -62,7 +62,6 @@ interface DbLeadRow {
   full_name: string;
   phone: string;
   alt_phone: string | null;
-  phone_numbers: string[] | null;
   email: string | null;
   company: string | null;
   job_title: string | null;
@@ -337,7 +336,7 @@ async function fetchLeadRows(currentUser?: ApiUser) {
   let query = supabaseAdmin
     .from("leads")
     .select(
-      "id, external_id, full_name, phone, alt_phone, phone_numbers, email, company, job_title, location, source, interest, status, notes, last_contacted, assigned_agent, callback_time, priority, lead_score, created_at, updated_at",
+      "*",
     )
     .order("created_at", { ascending: false });
 
@@ -448,7 +447,7 @@ async function getLeadRowById(leadId: string) {
   const { data, error } = await supabaseAdmin
     .from("leads")
     .select(
-      "id, external_id, full_name, phone, alt_phone, phone_numbers, email, company, job_title, location, source, interest, status, notes, last_contacted, assigned_agent, callback_time, priority, lead_score, created_at, updated_at",
+      "*",
     )
     .eq("id", leadId)
     .maybeSingle();
@@ -568,16 +567,15 @@ async function buildLeadPayload(currentUser?: ApiUser) {
       : null;
     const activeCallback = (callbacksByLead.get(lead.id) ?? [])[0];
     const phoneNumbers = buildLeadDialNumbers({
-      phone: lead.phone,
+      phone: lead.phone ?? "",
       altPhone: lead.alt_phone ?? "",
-      phoneNumbers: lead.phone_numbers ?? [],
     });
-    const primaryPhone = phoneNumbers[0] ?? lead.phone;
+    const primaryPhone = phoneNumbers[0] ?? lead.phone ?? "";
     const secondaryPhone = phoneNumbers[1] ?? lead.alt_phone ?? "";
 
     return {
       id: lead.id,
-      fullName: lead.full_name,
+      fullName: lead.full_name ?? "Untitled Lead",
       phone: primaryPhone,
       altPhone: secondaryPhone,
       phoneNumbers,
@@ -587,15 +585,15 @@ async function buildLeadPayload(currentUser?: ApiUser) {
       location: lead.location ?? "",
       source: lead.source ?? "",
       interest: lead.interest ?? "",
-      status: lead.status,
+      status: lead.status ?? "new",
       notes: lead.notes ?? "",
-      lastContacted: lead.last_contacted,
+      lastContacted: lead.last_contacted ?? null,
       assignedAgentId: assignedAgent?.id ?? "",
       assignedAgentName: assignedAgent?.name ?? "Unassigned",
-      callbackTime: activeCallback?.scheduled_for ?? lead.callback_time,
-      priority: lead.priority,
-      createdAt: lead.created_at,
-      updatedAt: lead.updated_at,
+      callbackTime: activeCallback?.scheduled_for ?? lead.callback_time ?? null,
+      priority: lead.priority ?? "Medium",
+      createdAt: lead.created_at ?? new Date().toISOString(),
+      updatedAt: lead.updated_at ?? lead.created_at ?? new Date().toISOString(),
       tags: (tagsByLead.get(lead.id) ?? []).map((tag) => tag.label),
       callHistory: (callsByLead.get(lead.id) ?? []).map((call) => {
         const status = mapStoredCallStatus(call.call_status, call.disposition);
@@ -604,13 +602,13 @@ async function buildLeadPayload(currentUser?: ApiUser) {
           outcomeSummary: call.outcome_summary ?? "",
           status,
           disposition: call.disposition,
-          callbackAt: activeCallback?.scheduled_for ?? lead.callback_time,
+          callbackAt: activeCallback?.scheduled_for ?? lead.callback_time ?? null,
         });
 
         return {
           id: call.id,
           leadId: lead.id,
-          leadName: lead.full_name,
+          leadName: lead.full_name ?? "Untitled Lead",
           phone: primaryPhone,
           createdAt: call.created_at,
           agentId: call.agent_id ?? "",
@@ -627,7 +625,7 @@ async function buildLeadPayload(currentUser?: ApiUser) {
           aiSummary: aiAssist.aiSummary,
           sentiment: aiAssist.sentiment,
           suggestedNextAction: aiAssist.suggestedNextAction,
-          followUpAt: activeCallback?.scheduled_for ?? lead.callback_time,
+          followUpAt: activeCallback?.scheduled_for ?? lead.callback_time ?? null,
         };
       }),
       notesHistory: (notesByLead.get(lead.id) ?? []).map((note) => ({
@@ -649,7 +647,7 @@ async function buildLeadPayload(currentUser?: ApiUser) {
           ? usersById.get(activity.actor_id)?.name ?? "System"
           : "System",
       })),
-      leadScore: lead.lead_score,
+      leadScore: lead.lead_score ?? 0,
       timezone: assignedAgent?.timezone ?? "UTC",
     };
   });
@@ -1177,11 +1175,6 @@ export async function importLeads(
         full_name: record.fullName.trim(),
         phone: normalizedPhone,
         alt_phone: record.altPhone.trim() || null,
-        phone_numbers: buildLeadDialNumbers({
-          phone: normalizedPhone,
-          altPhone: record.altPhone.trim(),
-          phoneNumbers: record.phoneNumbers,
-        }),
         email: normalizedEmail || null,
         company: record.company.trim() || null,
         job_title: record.jobTitle.trim() || null,
