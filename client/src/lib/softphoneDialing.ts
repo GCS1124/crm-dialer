@@ -54,6 +54,65 @@ export function formatDialNumberForCountry(
   return `+${callingCode}${dialDigits}`;
 }
 
+export function formatManualDialNumberForCountry(
+  phone: string,
+  options: {
+    callingCode?: string | null;
+    nationalNumberLength?: number | null;
+  },
+) {
+  const dialTarget = sanitizeDialPadInput(phone.trim());
+  const dialDigits = dialTarget.replace(/[^\d]/g, "");
+  const callingCode = options.callingCode?.replace(/[^\d]/g, "") ?? "";
+
+  if (!dialTarget) {
+    return "";
+  }
+
+  if (dialTarget.startsWith("+")) {
+    return dialTarget;
+  }
+
+  if (dialDigits.length <= 6) {
+    return dialDigits;
+  }
+
+  if (!callingCode) {
+    return dialDigits;
+  }
+
+  const expectedLength = options.nationalNumberLength ?? null;
+
+  if (
+    callingCode === "91" &&
+    expectedLength === 10 &&
+    dialDigits.length === expectedLength &&
+    /^[6-9]\d{9}$/.test(dialDigits)
+  ) {
+    return `0${dialDigits}`;
+  }
+
+  if (
+    callingCode === "91" &&
+    expectedLength === 10 &&
+    dialDigits.length === callingCode.length + expectedLength &&
+    dialDigits.startsWith(callingCode) &&
+    /^[6-9]\d{9}$/.test(dialDigits.slice(callingCode.length))
+  ) {
+    return `0${dialDigits.slice(callingCode.length)}`;
+  }
+
+  if (dialDigits.startsWith(callingCode)) {
+    return dialDigits;
+  }
+
+  if (expectedLength && dialDigits.length !== expectedLength) {
+    return dialDigits;
+  }
+
+  return `${callingCode}${dialDigits}`;
+}
+
 export function formatDialNumberForSession(
   phone: string,
   options: {
@@ -83,6 +142,16 @@ export function normalizeDialTarget(phone: string, sipDomain: string, dialPrefix
   const isLikelyPhoneNumber = phoneHasPlus || phoneDigits.length >= 8;
   let digits = phoneDigits;
 
+  if (
+    isLikelyPhoneNumber &&
+    prefixDigits === "0" &&
+    digits.startsWith("91") &&
+    digits.length === 12 &&
+    /^[6-9]\d{9}$/.test(digits.slice(2))
+  ) {
+    digits = digits.slice(2);
+  }
+
   if (isLikelyPhoneNumber && prefixDigits) {
     const shouldPrefix =
       prefixDigits.length === 1
@@ -94,7 +163,7 @@ export function normalizeDialTarget(phone: string, sipDomain: string, dialPrefix
     }
   }
 
-  const includePlus = isLikelyPhoneNumber && (prefixHasPlus || phoneHasPlus);
+  const includePlus = isLikelyPhoneNumber && (prefixHasPlus || (phoneHasPlus && !prefixDigits));
   const userPart = includePlus ? `+${digits}` : digits;
   const baseTarget = `sip:${userPart}@${sipDomain}`;
   return digits.length >= 8 ? `${baseTarget};user=phone` : baseTarget;

@@ -9,7 +9,7 @@ import { Card } from "../components/shared/Card";
 import { useAppState } from "../hooks/useAppState";
 import { cn, formatDuration, formatPhone } from "../lib/utils";
 import {
-  formatDialNumberForCountry,
+  formatManualDialNumberForCountry,
   inferDialCountryId,
   sanitizeDialPadInput,
 } from "../lib/softphoneDialing";
@@ -90,12 +90,12 @@ export function ManualDialerPage() {
     return selectedCountry?.callingCode ?? "";
   }, [countryId, customCallingCode, selectedCountry]);
 
-  const formattedDialNumber = useMemo(() => {
-    return formatDialNumberForCountry(dialTarget, {
+  const manualDialNumber = useMemo(() => {
+    return formatManualDialNumberForCountry(dialTarget, {
       callingCode,
       nationalNumberLength: selectedCountry?.nationalNumberLength ?? null,
     });
-  }, [dialDigits, dialTarget, callingCode, selectedCountry]);
+  }, [dialTarget, callingCode, selectedCountry]);
 
   useEffect(() => {
     if (!activeCall) {
@@ -138,7 +138,7 @@ export function ManualDialerPage() {
     if (!dialTarget || callInProgress) {
       return;
     }
-    const callNumber = formattedDialNumber || dialTarget;
+    const callNumber = manualDialNumber || dialTarget;
     if (!callNumber) {
       setDialPadMessage("Enter a valid phone number.");
       return;
@@ -288,9 +288,9 @@ export function ManualDialerPage() {
                 </label>
               ) : null}
 
-              {formattedDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
+              {manualDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Dialing as: {formattedDialNumber}
+                  Dialing as: {manualDialNumber}
                 </p>
               ) : null}
 
