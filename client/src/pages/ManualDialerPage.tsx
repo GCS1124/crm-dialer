@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, PhoneCall, PhoneOff, Pause, Mic, Settings2 } from "lucide-react";
+import { ArrowLeft, PhoneCall, PhoneOff, Pause, Mic, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -10,18 +10,10 @@ import { useAppState } from "../hooks/useAppState";
 import { cn, formatDuration, formatPhone } from "../lib/utils";
 import {
   formatManualDialNumberForCountry,
-  inferDialCountryId,
   sanitizeDialPadInput,
 } from "../lib/softphoneDialing";
 
 const dialPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
-
-const manualDialCountries = [
-  { id: "US", label: "United States", callingCode: "1", nationalNumberLength: 10 },
-  { id: "IN", label: "India", callingCode: "91", nationalNumberLength: 10 },
-] as const;
-
-type ManualDialCountryId = (typeof manualDialCountries)[number]["id"] | "custom";
 
 export function ManualDialerPage() {
   const navigate = useNavigate();
@@ -41,61 +33,18 @@ export function ManualDialerPage() {
   const [dialPadValue, setDialPadValue] = useState("");
   const [dialPadMessage, setDialPadMessage] = useState("");
   const [elapsed, setElapsed] = useState(0);
-  const [countryId, setCountryId] = useState<ManualDialCountryId | "">("");
-  const [customCallingCode, setCustomCallingCode] = useState("");
 
   const dialTarget = useMemo(() => sanitizeDialPadInput(dialPadValue), [dialPadValue]);
   const dialDigits = useMemo(() => dialTarget.replace(/[^\d]/g, ""), [dialTarget]);
   const callInProgress = Boolean(activeCall);
   const manualCallActive = activeCall?.status === "manual";
-  const selectedCountry = useMemo(
-    () => manualDialCountries.find((country) => country.id === countryId) ?? null,
-    [countryId],
-  );
-
-  useEffect(() => {
-    const stored = localStorage.getItem("crm-dialer-manual-dial-country");
-    if (stored && (stored === "US" || stored === "IN" || stored === "custom")) {
-      setCountryId(stored);
-    } else {
-      setCountryId(
-        inferDialCountryId({
-          callerId: voiceConfig.callerId,
-          timezone: currentUser?.timezone,
-        }),
-      );
-    }
-
-    const storedCallingCode = localStorage.getItem("crm-dialer-manual-dial-custom-code");
-    if (storedCallingCode) {
-      setCustomCallingCode(storedCallingCode.replace(/[^\d]/g, ""));
-    }
-  }, [currentUser?.timezone, voiceConfig.callerId]);
-
-  useEffect(() => {
-    if (!countryId) {
-      return;
-    }
-    localStorage.setItem("crm-dialer-manual-dial-country", countryId);
-  }, [countryId]);
-
-  useEffect(() => {
-    localStorage.setItem("crm-dialer-manual-dial-custom-code", customCallingCode);
-  }, [customCallingCode]);
-
-  const callingCode = useMemo(() => {
-    if (countryId === "custom") {
-      return customCallingCode.replace(/[^\d]/g, "");
-    }
-    return selectedCountry?.callingCode ?? "";
-  }, [countryId, customCallingCode, selectedCountry]);
 
   const manualDialNumber = useMemo(() => {
     return formatManualDialNumberForCountry(dialTarget, {
-      callingCode,
-      nationalNumberLength: selectedCountry?.nationalNumberLength ?? null,
+      callingCode: "1",
+      nationalNumberLength: 10,
     });
-  }, [dialTarget, callingCode, selectedCountry]);
+  }, [dialTarget]);
 
   useEffect(() => {
     if (!activeCall) {
@@ -230,28 +179,8 @@ export function ManualDialerPage() {
                   <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
                     Country
                   </span>
-                  <div className="relative">
-                    <select
-                      value={countryId}
-                      onChange={(event) => {
-                        setDialPadMessage("");
-                        setCountryId(event.target.value as ManualDialCountryId | "");
-                      }}
-                      className="crm-input appearance-none py-2 pl-9 pr-9 text-[12px]"
-                      disabled={callInProgress}
-                    >
-                      <option value="">Select</option>
-                      {manualDialCountries.map((country) => (
-                        <option key={country.id} value={country.id}>
-                          {country.label} (+{country.callingCode})
-                        </option>
-                      ))}
-                      <option value="custom">Custom...</option>
-                    </select>
-                    <ChevronDown
-                      size={14}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-                    />
+                  <div className="crm-input flex items-center py-2 text-[12px] text-slate-700 dark:text-slate-200">
+                    United States (+1)
                   </div>
                 </label>
 
@@ -268,25 +197,6 @@ export function ManualDialerPage() {
                   />
                 </label>
               </div>
-
-              {countryId === "custom" ? (
-                <label className="space-y-1">
-                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                    Custom calling code
-                  </span>
-                  <input
-                    value={customCallingCode}
-                    onChange={(event) => {
-                      setDialPadMessage("");
-                      setCustomCallingCode(event.target.value.replace(/[^\d]/g, ""));
-                    }}
-                    placeholder="e.g. 1, 44, 91"
-                    inputMode="numeric"
-                    className="crm-input py-2 text-[12px]"
-                    disabled={callInProgress}
-                  />
-                </label>
-              ) : null}
 
               {manualDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">

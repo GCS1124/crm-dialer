@@ -6,20 +6,6 @@ export function inferDialCountryId(input: {
   callerId?: string | null;
   timezone?: string | null;
 }) {
-  if (/(kolkata|calcutta)/i.test(input.timezone ?? "")) {
-    return "IN";
-  }
-
-  const callerDigits = input.callerId?.replace(/[^\d]/g, "") ?? "";
-
-  if (callerDigits.length === 11 && callerDigits.startsWith("1")) {
-    return "US";
-  }
-
-  if (callerDigits.length === 12 && callerDigits.startsWith("91")) {
-    return "IN";
-  }
-
   return "US";
 }
 
@@ -71,13 +57,11 @@ export function formatDialNumberForSession(
     timezone?: string | null;
   },
 ) {
-  const countryId = inferDialCountryId(options);
-  const country =
-    countryId === "IN"
-      ? { callingCode: "91", nationalNumberLength: 10 }
-      : { callingCode: "1", nationalNumberLength: 10 };
-
-  return formatDialNumberForCountry(phone, country);
+  void options;
+  return formatDialNumberForCountry(phone, {
+    callingCode: "1",
+    nationalNumberLength: 10,
+  });
 }
 
 export function normalizeDialTarget(phone: string, sipDomain: string, dialPrefix = "") {
