@@ -146,6 +146,7 @@ export function LoginPage() {
               <span className="font-medium text-slate-700">Email</span>
               <input
                 type="email"
+                autoComplete="username"
                 value={email}
                 onChange={(event) => {
                   setEmail(event.target.value);
@@ -163,6 +164,7 @@ export function LoginPage() {
               <span className="font-medium text-slate-700">Password</span>
               <input
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(event) => {
                   setPassword(event.target.value);
