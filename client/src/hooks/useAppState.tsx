@@ -331,6 +331,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [wrapUpDurationSeconds, setWrapUpDurationSeconds] = useState(0);
   const voiceClientRef = useRef<SimpleUser | null>(null);
   const voiceConfigSignatureRef = useRef<string | null>(null);
+  const wrapUpLeadIdRef = useRef<string | null>(null);
+  const suppressVoiceDisconnectRef = useRef(0);
   const activeCallMetaRef = useRef<{
     leadId: string | null;
     dialedNumber: string;
@@ -759,26 +761,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setLastWorkspaceSyncAt(null);
       setAutoDialCountdown(null);
       setCurrentLeadId(null);
-      setCurrentPhoneIndex(0);
-      setQueueCursorHydrated(false);
-      setActiveCall(null);
-      setWrapUpLeadId(null);
-      setWrapUpDurationSeconds(0);
-      lastAutoDialLeadIdRef.current = null;
-      queueStateSignatureRef.current = null;
-      if (autoDialTimerRef.current) {
-        window.clearInterval(autoDialTimerRef.current);
-        autoDialTimerRef.current = null;
-      }
-    activeCallMetaRef.current = null;
-    const client = voiceClientRef.current;
-    voiceClientRef.current = null;
-    voiceConfigSignatureRef.current = null;
-    remoteAudioRef.current = null;
-    if (client) {
-      void client.unregister().catch(() => undefined);
-      void client.disconnect().catch(() => undefined);
+    setCurrentPhoneIndex(0);
+    setQueueCursorHydrated(false);
+    setActiveCall(null);
+    setWrapUpLeadId(null);
+    setWrapUpDurationSeconds(0);
+    wrapUpLeadIdRef.current = null;
+    lastAutoDialLeadIdRef.current = null;
+    queueStateSignatureRef.current = null;
+    if (autoDialTimerRef.current) {
+      window.clearInterval(autoDialTimerRef.current);
+      autoDialTimerRef.current = null;
     }
+    activeCallMetaRef.current = null;
+    void destroyVoiceClient();
   }
 
   async function persistFailedCallAttempt(
@@ -823,9 +819,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     );
 
     if (leadId) {
+      wrapUpLeadIdRef.current = leadId;
       setWrapUpLeadId(leadId);
       setWrapUpDurationSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1000)));
+      setCallError(null);
     } else {
+      wrapUpLeadIdRef.current = null;
       setWrapUpLeadId(null);
       setWrapUpDurationSeconds(0);
     }
@@ -839,6 +838,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     failureStage: CallAttemptFailureStage = "unknown",
   ) {
     const meta = activeCallMetaRef.current;
+    let shouldSurfaceCallError = true;
     if (meta && meta.startedAt === startedAt && !meta.userHangup) {
       void persistFailedCallAttempt(meta, failureStage, message);
     }
@@ -854,16 +854,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         existing.status === "manual"
       ) {
         if (existing.leadId) {
+          wrapUpLeadIdRef.current = existing.leadId;
           setWrapUpLeadId(existing.leadId);
           setWrapUpDurationSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1000)));
         }
+        shouldSurfaceCallError = false;
         return null;
       }
 
       return null;
     });
     activeCallMetaRef.current = null;
-    setCallError(message);
+    setCallError(shouldSurfaceCallError ? message : null);
   }
 
   async function destroyVoiceClient() {
@@ -876,6 +878,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    suppressVoiceDisconnectRef.current += 1;
     try {
       await client.unregister();
     } catch {
@@ -886,6 +889,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await client.disconnect();
     } catch {
       // Ignore disconnect failures during cleanup.
+    } finally {
+      suppressVoiceDisconnectRef.current = Math.max(
+        0,
+        suppressVoiceDisconnectRef.current - 1,
+      );
     }
   }
 
@@ -1058,6 +1066,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             error?.message?.trim() ||
             "The CRM softphone disconnected from the SIP server before the call could be completed.";
           const meta = activeCallMetaRef.current;
+
+          if (suppressVoiceDisconnectRef.current > 0 || wrapUpLeadIdRef.current) {
+            return;
+          }
 
           if (meta) {
             failCallSession(message, meta.startedAt, "server_disconnect");
@@ -1485,6 +1497,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     lastAutoDialLeadIdRef.current = wrapUpLeadId;
     setWrapUpLeadId(null);
     setWrapUpDurationSeconds(0);
+    wrapUpLeadIdRef.current = null;
     if (response.queueState?.currentItem) {
       setCurrentLeadId(response.queueState.currentItem.leadId);
       setCurrentPhoneIndex(response.queueState.currentItem.phoneIndex);
