@@ -1292,7 +1292,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const callLeadId = lead?.id ?? requestedLeadId ?? null;
     const formattedDialNumber = formatDialNumberForSession(queueDialedNumber, {
       callerId: voiceConfig.callerId ?? activeSipProfile?.callerId,
-      timezone: currentUser?.timezone,
+      timezone: lead?.timezone ?? currentUser?.timezone,
     });
     const outboundDialNumber = formattedDialNumber || queueDialedNumber;
     const displayName = (input?.displayName ?? lead?.fullName ?? queueDialedNumber).trim();

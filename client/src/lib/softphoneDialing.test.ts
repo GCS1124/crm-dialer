@@ -7,19 +7,30 @@ import {
   formatManualDialNumberForCountry,
   normalizeDialTarget,
   sanitizeDialPadInput,
+  inferDialCountryId,
 } from "./softphoneDialing";
 
 test("sanitizes manual dial input without changing digits", () => {
   assert.equal(sanitizeDialPadInput("+91 (952) 840-9189"), "+919528409189");
 });
 
-test("normalizes manual dial numbers for country-specific trunk dialing", () => {
+test("infers country from the timezone before caller id fallback", () => {
+  assert.equal(
+    inferDialCountryId({
+      callerId: "17252182800",
+      timezone: "Asia/Calcutta",
+    }),
+    "IN",
+  );
+});
+
+test("formats manual dial numbers using the selected country code", () => {
   assert.equal(
     formatManualDialNumberForCountry("9528409189", {
       callingCode: "91",
       nationalNumberLength: 10,
     }),
-    "09528409189",
+    "+919528409189",
   );
   assert.equal(
     formatManualDialNumberForCountry("+919528409189", {
@@ -33,29 +44,29 @@ test("normalizes manual dial numbers for country-specific trunk dialing", () => 
       callingCode: "1",
       nationalNumberLength: 10,
     }),
-    "18773841516",
+    "+18773841516",
   );
 });
 
-test("normalizes SIP targets while applying the dial prefix without preserving plus", () => {
+test("normalizes SIP targets by stripping the plus from E.164 numbers", () => {
   assert.equal(
     normalizeDialTarget("+919528409189", "umsg.uvcpbx.in"),
-    "sip:+919528409189@umsg.uvcpbx.in;user=phone",
+    "sip:919528409189@umsg.uvcpbx.in;user=phone",
   );
   assert.equal(
     normalizeDialTarget("+919528409189", "umsg.uvcpbx.in", "0"),
-    "sip:09528409189@umsg.uvcpbx.in;user=phone",
+    "sip:919528409189@umsg.uvcpbx.in;user=phone",
   );
   assert.equal(
-    normalizeDialTarget("9528409189", "umsg.uvcpbx.in", "0"),
-    "sip:09528409189@umsg.uvcpbx.in;user=phone",
+    normalizeDialTarget("+12103791281", "umsg.uvcpbx.in", "0"),
+    "sip:12103791281@umsg.uvcpbx.in;user=phone",
   );
 });
 
 test("formats bare Indian mobile numbers from an India timezone before SIP dialing", () => {
   assert.equal(
     formatDialNumberForSession("9528409189", {
-      callerId: "17252182800",
+      callerId: null,
       timezone: "Asia/Calcutta",
     }),
     "+919528409189",
@@ -63,13 +74,13 @@ test("formats bare Indian mobile numbers from an India timezone before SIP diali
   assert.equal(
     normalizeDialTarget(
       formatDialNumberForSession("9528409189", {
-        callerId: "17252182800",
+        callerId: null,
         timezone: "Asia/Calcutta",
       }),
       "umsg.uvcpbx.in",
       "0",
     ),
-    "sip:09528409189@umsg.uvcpbx.in;user=phone",
+    "sip:919528409189@umsg.uvcpbx.in;user=phone",
   );
 });
 
