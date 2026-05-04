@@ -35,7 +35,6 @@ export function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<LoginField, string>>>({});
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const googleSignInAvailable = hasSupabaseBrowserConfig;
 
   if (currentUser) {
     return <Navigate to="/dashboard" replace />;
@@ -146,54 +145,6 @@ export function LoginPage() {
               <ArrowRight size={16} />
             </Button>
           </form>
-
-          {googleSignInAvailable ? (
-            <>
-              <div className="my-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-slate-200" />
-                <span className="text-[11px] font-medium uppercase tracking-[0.28em] text-slate-400">
-                  Or
-                </span>
-                <div className="h-px flex-1 bg-slate-200" />
-              </div>
-
-              <Button
-                className="w-full"
-                size="lg"
-                type="button"
-                variant="secondary"
-                disabled={isSubmitting}
-                onClick={() => void handleGoogleSignIn()}
-              >
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4">
-                  <path
-                    fill="#EA4335"
-                    d="M12 10.2v3.9h5.5c-.24 1.26-.98 2.33-2.08 3.05l3.37 2.61c1.96-1.81 3.09-4.48 3.09-7.65 0-.72-.06-1.42-.18-2.1H12Z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 22c2.97 0 5.46-.98 7.28-2.66l-3.37-2.61c-.94.63-2.14 1.01-3.91 1.01-3 0-5.53-2.03-6.44-4.76H2.08v2.99A10.99 10.99 0 0 0 12 22Z"
-                  />
-                  <path
-                    fill="#4A90E2"
-                    d="M5.56 12.98A6.62 6.62 0 0 1 5.2 11c0-.69.12-1.36.34-1.98V6.03H2.08A11 11 0 0 0 1 11c0 1.77.42 3.44 1.08 4.97l3.48-2.99Z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M12 5.24c1.61 0 3.06.55 4.2 1.64l3.15-3.15C17.45 1.98 14.97 1 12 1A10.99 10.99 0 0 0 2.08 6.03l3.48 2.99C6.47 7.27 9 5.24 12 5.24Z"
-                  />
-                </svg>
-                Continue with Google
-              </Button>
-            </>
-          ) : null}
-
-          <div className="mt-6 flex items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-[13px]">
-            <span className="text-slate-600">Need a new account?</span>
-            <Link to="/signup" className="font-medium text-cyan-700 hover:text-cyan-800">
-              Create account
-            </Link>
-          </div>
         </Card>
       </div>
     </div>
