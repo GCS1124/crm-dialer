@@ -6,6 +6,10 @@ export function inferDialCountryId(input: {
   callerId?: string | null;
   timezone?: string | null;
 }) {
+  if (/(kolkata|calcutta)/i.test(input.timezone ?? "")) {
+    return "IN";
+  }
+
   const callerDigits = input.callerId?.replace(/[^\d]/g, "") ?? "";
 
   if (callerDigits.length === 11 && callerDigits.startsWith("1")) {
@@ -13,10 +17,6 @@ export function inferDialCountryId(input: {
   }
 
   if (callerDigits.length === 12 && callerDigits.startsWith("91")) {
-    return "IN";
-  }
-
-  if (input.timezone?.includes("Kolkata")) {
     return "IN";
   }
 

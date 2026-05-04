@@ -52,11 +52,32 @@ test("normalizes SIP targets while applying the dial prefix without preserving p
   );
 });
 
+test("formats bare Indian mobile numbers from an India timezone before SIP dialing", () => {
+  assert.equal(
+    formatDialNumberForSession("9528409189", {
+      callerId: "17252182800",
+      timezone: "Asia/Calcutta",
+    }),
+    "+919528409189",
+  );
+  assert.equal(
+    normalizeDialTarget(
+      formatDialNumberForSession("9528409189", {
+        callerId: "17252182800",
+        timezone: "Asia/Calcutta",
+      }),
+      "umsg.uvcpbx.in",
+      "0",
+    ),
+    "sip:09528409189@umsg.uvcpbx.in;user=phone",
+  );
+});
+
 test("formats ten digit NANP numbers from a US caller ID before SIP dialing", () => {
   assert.equal(
     formatDialNumberForSession("8773841516", {
       callerId: "17252182800",
-      timezone: "Asia/Kolkata",
+      timezone: "America/Chicago",
     }),
     "+18773841516",
   );

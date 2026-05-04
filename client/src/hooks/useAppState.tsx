@@ -94,12 +94,6 @@ function buildMicrophoneBlockedMessage(openedSystemDialer: boolean) {
     : "Browser microphone access is blocked for this site. Allow microphone access from the address bar site settings, reload the page, and start the call again.";
 }
 
-function buildSipDeclinedFallbackMessage(openedSystemDialer: boolean) {
-  return openedSystemDialer
-    ? "Unified Voice declined the browser route, so the system dialer was opened as a fallback. Keep this call active here and save the outcome when finished."
-    : "Unified Voice declined the browser route. Keep this call active here if you place it externally, then save the outcome when finished.";
-}
-
 function openSystemDialer(phone: string) {
   if (typeof window === "undefined") {
     return false;
@@ -336,6 +330,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const activeCallMetaRef = useRef<{
     leadId: string | null;
     dialedNumber: string;
+    phoneIndex: number;
     startedAt: number;
     connected: boolean;
     userHangup: boolean;
@@ -347,6 +342,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const autoDialTimerRef = useRef<number | null>(null);
   const lastAutoDialLeadIdRef = useRef<string | null>(null);
+  const pendingFallbackDialRef = useRef<{
+    leadId: string;
+    phoneNumber: string;
+    phoneIndex: number;
+  } | null>(null);
   const notifiedCallbacksRef = useRef<Set<string>>(new Set());
   const queueStateSignatureRef = useRef<string | null>(null);
 
@@ -869,7 +869,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setCallError(shouldSurfaceCallError ? message : null);
 
     if (advanceQueue && meta?.leadId && !meta.connected && !meta.fallbackOpened && !meta.userHangup) {
-      await advanceQueueCursor("failed", meta.leadId, currentPhoneIndex).catch(() => undefined);
+      const nextState = await advanceQueueCursor("failed", meta.leadId, meta.phoneIndex).catch(() => null);
+      const nextItem = nextState?.currentItem;
+      if (
+        nextItem?.leadId === meta.leadId &&
+        nextItem.phoneIndex > meta.phoneIndex &&
+        nextItem.phoneNumber
+      ) {
+        pendingFallbackDialRef.current = {
+          leadId: nextItem.leadId,
+          phoneNumber: nextItem.phoneNumber,
+          phoneIndex: nextItem.phoneIndex,
+        };
+      }
     }
   }
 
@@ -1028,31 +1040,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             const sipSummary = meta.sipStatusCode
               ? `SIP ${meta.sipStatusCode}${meta.sipReasonPhrase ? ` ${meta.sipReasonPhrase}` : ""}`
               : null;
-
-            if (meta.sipStatusCode && meta.sipStatusCode >= 400 && !meta.fallbackOpened) {
-              meta.fallbackOpened = true;
-              const openedSystemDialer = openSystemDialer(meta.dialedNumber);
-              void persistFailedCallAttempt(
-                meta,
-                "sip_reject",
-                `Browser SIP route was rejected before connect${
-                  sipSummary ? ` (${sipSummary})` : ""
-                }.`,
-              );
-              activeCallMetaRef.current = null;
-              void destroyVoiceClient().catch(() => undefined);
-              setActiveCall((existing) =>
-                existing && existing.startedAt === meta.startedAt
-                  ? {
-                      ...existing,
-                      status: "manual",
-                      recordingEnabled: false,
-                    }
-                  : existing,
-              );
-              setCallError(buildSipDeclinedFallbackMessage(openedSystemDialer));
-              return;
-            }
 
             void failCallSession(
               sipSummary
@@ -1317,6 +1304,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     activeCallMetaRef.current = {
       leadId: callLeadId,
       dialedNumber: outboundDialNumber,
+      phoneIndex: currentPhoneIndex,
       startedAt,
       connected: false,
       userHangup: false,
@@ -1422,6 +1410,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       throw error;
     }
   };
+
+  useEffect(() => {
+    const pending = pendingFallbackDialRef.current;
+    if (!pending || activeCall || wrapUpLeadId) {
+      return;
+    }
+
+    if (currentLeadId !== pending.leadId || currentPhoneIndex !== pending.phoneIndex) {
+      return;
+    }
+
+    pendingFallbackDialRef.current = null;
+    void startCall({
+      leadId: pending.leadId,
+      phone: pending.phoneNumber,
+    }).catch(() => undefined);
+  }, [activeCall, currentLeadId, currentPhoneIndex, wrapUpLeadId]);
 
   const toggleMute = () => {
     setActiveCall((existing) => {
