@@ -1,5 +1,5 @@
 import { ArrowRight } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { z } from "zod";
 
@@ -7,9 +7,7 @@ import { AlertBanner } from "../components/shared/AlertBanner";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { useAppState } from "../hooks/useAppState";
-import { buildApiUrl } from "../lib/api";
 import { hasSupabaseBrowserConfig } from "../lib/supabase";
-import type { RuntimeStatus } from "../types";
 
 const loginSchema = z.object({
   email: z
@@ -37,41 +35,7 @@ export function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<LoginField, string>>>({});
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
-  const [runtimeError, setRuntimeError] = useState("");
-  const googleSignInAvailable = hasSupabaseBrowserConfig && runtime?.dataMode === "supabase"&& false;
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadRuntime() {
-      try {
-        const response = await fetch(buildApiUrl("/runtime"));
-        if (!response.ok) {
-          throw new Error(`Runtime check failed with status ${response.status}`);
-        }
-
-        const payload = (await response.json()) as RuntimeStatus;
-        if (active) {
-          setRuntime(payload);
-          setRuntimeError("");
-        }
-      } catch (loadError) {
-        if (active) {
-          setRuntimeError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Unable to read backend runtime status.",
-          );
-        }
-      }
-    }
-
-    void loadRuntime();
-    return () => {
-      active = false;
-    };
-  }, []);
+  const googleSignInAvailable = hasSupabaseBrowserConfig;
 
   if (currentUser) {
     return <Navigate to="/dashboard" replace />;
@@ -124,18 +88,13 @@ export function LoginPage() {
               </p>
             </div>
             <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
-              {!runtime
-                ? "Checking backend"
-                : runtime.dataMode === "supabase"
-                  ? "Live Supabase"
-                  : "Local mode"}
+              {hasSupabaseBrowserConfig ? "Live Supabase" : "Supabase not configured"}
             </div>
           </div>
-
-          {runtimeError ? (
+          {!hasSupabaseBrowserConfig ? (
             <AlertBanner
-              title="Runtime status unavailable"
-              description={runtimeError}
+              title="Supabase is not configured"
+              description="Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before signing in."
               tone="warning"
               className="mt-5"
             />

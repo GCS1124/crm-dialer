@@ -16,3 +16,16 @@ export const supabase: SupabaseClient | null = hasSupabaseBrowserConfig
       },
     })
   : null;
+
+export function assertSupabaseConfigured() {
+  if (!supabase) {
+    throw new Error(
+      "Supabase browser client is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.",
+    );
+  }
+}
+
+export function getSupabaseClient() {
+  assertSupabaseConfigured();
+  return supabase as SupabaseClient;
+}
