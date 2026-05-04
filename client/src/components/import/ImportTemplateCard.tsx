@@ -23,7 +23,7 @@ export function ImportTemplateCard({ compact = false, className }: ImportTemplat
           </h3>
           <p className="mt-1 max-w-2xl text-[12px] leading-6 text-slate-500 dark:text-slate-400">
             Use the bundled workbook to keep the upload layout consistent with the lead importer.
-          </p>
+          </p> 
         </div>
         <div className="rounded-full bg-sky-50 p-2 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
           <Download size={18} />
