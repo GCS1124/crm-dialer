@@ -1445,7 +1445,7 @@ export async function saveFailedCallAttempt(
     const activity = buildActivity(
       currentUser,
       "call",
-      "Call attempt failed",
+      "Call failed before connect",
       formatFailedAttemptSummary(diagnostic),
       now,
     );

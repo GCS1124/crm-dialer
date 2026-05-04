@@ -1623,7 +1623,7 @@ export async function saveFailedCallAttempt(
       lead_id: input.leadId,
       actor_id: currentUser.id,
       activity_type: "call",
-      title: "Call attempt failed",
+      title: "Call failed before connect",
       description,
     }),
   ]);
