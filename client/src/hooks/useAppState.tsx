@@ -832,15 +832,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     activeCallMetaRef.current = null;
   }
 
-  function failCallSession(
+  async function failCallSession(
     message: string,
     startedAt: number,
     failureStage: CallAttemptFailureStage = "unknown",
+    advanceQueue = false,
   ) {
     const meta = activeCallMetaRef.current;
     let shouldSurfaceCallError = true;
     if (meta && meta.startedAt === startedAt && !meta.userHangup) {
-      void persistFailedCallAttempt(meta, failureStage, message);
+      await persistFailedCallAttempt(meta, failureStage, message);
     }
 
     setActiveCall((existing) => {
@@ -866,6 +867,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     });
     activeCallMetaRef.current = null;
     setCallError(shouldSurfaceCallError ? message : null);
+
+    if (advanceQueue && meta?.leadId && !meta.connected && !meta.fallbackOpened && !meta.userHangup) {
+      await advanceQueueCursor("failed", meta.leadId, currentPhoneIndex).catch(() => undefined);
+    }
   }
 
   async function destroyVoiceClient() {
@@ -1049,12 +1054,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
               return;
             }
 
-            failCallSession(
+            void failCallSession(
               sipSummary
                 ? `Call ended before connecting (${sipSummary}).`
                 : "Call ended before connecting (rejected, busy, or no answer).",
               meta.startedAt,
               meta.sipStatusCode ? "sip_reject" : "hangup_before_connect",
+              true,
             );
             return;
           }
@@ -1072,7 +1078,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           }
 
           if (meta) {
-            failCallSession(message, meta.startedAt, "server_disconnect");
+            void failCallSession(message, meta.startedAt, "server_disconnect", true);
             return;
           }
 
@@ -1331,7 +1337,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       try {
         await persistQueueCursor(callLeadId, currentPhoneIndex);
       } catch (error) {
-        failCallSession(
+        await failCallSession(
           error instanceof Error && error.message.trim()
             ? error.message
             : "Unable to save the active queue cursor before dialing.",
@@ -1405,16 +1411,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      failCallSession(
+      await failCallSession(
         error instanceof Error && error.message.trim()
           ? error.message
           : "The CRM softphone could not place the SIP call.",
         startedAt,
         "invite",
+        true,
       );
-      if (callLeadId) {
-        await advanceQueueCursor("failed", callLeadId, currentPhoneIndex).catch(() => undefined);
-      }
       throw error;
     }
   };

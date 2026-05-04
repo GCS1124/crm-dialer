@@ -5,6 +5,7 @@ import {
   buildLeadDialNumbers,
   extractDialableNumbers,
   normalizeDialableNumber,
+  normalizeLeadImportPhoneFields,
 } from "../src/services/phoneNumberService.js";
 
 test("normalizes a single phone number without changing the dial target", () => {
@@ -30,4 +31,17 @@ test("builds dialable numbers from raw lead fields without merging separate entr
   });
 
   assert.deepEqual(numbers, ["4155550101", "4155550102", "3125550103"]);
+});
+
+test("splits imported lead phones into primary and alternate fields", () => {
+  const fields = normalizeLeadImportPhoneFields({
+    phone: "+1 (415) 555-0101, +1 (212) 555-0102",
+    altPhone: "",
+  });
+
+  assert.deepEqual(fields, {
+    phone: "+14155550101",
+    altPhone: "+12125550102",
+    phoneNumbers: ["+14155550101", "+12125550102"],
+  });
 });

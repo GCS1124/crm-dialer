@@ -62,3 +62,17 @@ export function buildLeadDialNumbers(input: {
     sourceNumbers.flatMap((value) => extractDialableNumbers(value)),
   );
 }
+
+export function normalizeLeadImportPhoneFields(input: {
+  phone: string;
+  altPhone: string;
+  phoneNumbers?: string[] | null;
+}) {
+  const phoneNumbers = buildLeadDialNumbers(input);
+
+  return {
+    phone: phoneNumbers[0] ?? input.phone.trim(),
+    altPhone: phoneNumbers[1] ?? "",
+    phoneNumbers,
+  };
+}

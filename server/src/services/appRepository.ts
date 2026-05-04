@@ -10,7 +10,10 @@ import {
   formatFailedAttemptSummary,
   parseFailedAttemptDescription,
 } from "./callAttemptDiagnostics.js";
-import { buildLeadDialNumbers } from "./phoneNumberService.js";
+import {
+  buildLeadDialNumbers,
+  normalizeLeadImportPhoneFields,
+} from "./phoneNumberService.js";
 import { getQueueKey, toQueueProgressRecord } from "./queueService.js";
 import {
   assignSipProfileToUser as assignStoredSipProfileToUser,
@@ -1169,14 +1172,32 @@ export async function importLeads(
 ) {
   let duplicates = 0;
   let invalidRows = 0;
-  const normalizedPhones = records.map((record) => record.phone.trim()).filter(Boolean);
-  const normalizedEmails = records
-    .map((record) => record.email.trim().toLowerCase())
+  const normalizedRecords = records.map((record) => {
+    const dialablePhones = normalizeLeadImportPhoneFields({
+      phone: record.phone,
+      altPhone: record.altPhone,
+      phoneNumbers: record.phoneNumbers,
+    });
+
+    return {
+      record,
+      dialablePhones,
+      normalizedEmail: record.email.trim().toLowerCase(),
+    };
+  });
+  const normalizedPhones = normalizedRecords
+    .flatMap(({ dialablePhones }) => dialablePhones.phoneNumbers)
+    .filter(Boolean);
+  const normalizedEmails = normalizedRecords
+    .map(({ normalizedEmail }) => normalizedEmail)
     .filter(Boolean);
 
-  const [existingByPhoneResult, existingByEmailResult] = await Promise.all([
+  const [existingByPhoneResult, existingByAltPhoneResult, existingByEmailResult] = await Promise.all([
     normalizedPhones.length
-      ? supabaseAdmin.from("leads").select("phone").in("phone", normalizedPhones)
+      ? supabaseAdmin.from("leads").select("phone, alt_phone").in("phone", normalizedPhones)
+      : Promise.resolve({ data: [], error: null }),
+    normalizedPhones.length
+      ? supabaseAdmin.from("leads").select("phone, alt_phone").in("alt_phone", normalizedPhones)
       : Promise.resolve({ data: [], error: null }),
     normalizedEmails.length
       ? supabaseAdmin.from("leads").select("email").in("email", normalizedEmails)
@@ -1186,14 +1207,24 @@ export async function importLeads(
   if (existingByPhoneResult.error) {
     handleError(existingByPhoneResult.error, "Unable to check duplicate phone numbers");
   }
+  if (existingByAltPhoneResult.error) {
+    handleError(existingByAltPhoneResult.error, "Unable to check duplicate alternate phone numbers");
+  }
   if (existingByEmailResult.error) {
     handleError(existingByEmailResult.error, "Unable to check duplicate email addresses");
   }
 
+  const existingPhoneRows = [
+    ...((existingByPhoneResult.data ?? []) as Array<{ phone: string | null; alt_phone: string | null }>),
+    ...((existingByAltPhoneResult.data ?? []) as Array<{ phone: string | null; alt_phone: string | null }>),
+  ];
   const existingPhones = new Set(
-    ((existingByPhoneResult.data ?? []) as Array<{ phone: string | null }>)
-      .map((row) => row.phone ?? "")
-      .filter(Boolean),
+    existingPhoneRows.flatMap((row) =>
+      buildLeadDialNumbers({
+        phone: row.phone ?? "",
+        altPhone: row.alt_phone ?? "",
+      }),
+    ),
   );
   const existingEmails = new Set(
     ((existingByEmailResult.data ?? []) as Array<{ email: string | null }>)
@@ -1201,16 +1232,17 @@ export async function importLeads(
       .filter(Boolean),
   );
 
-  const rows = records.flatMap((record) => {
-    if (!record.fullName.trim() || !record.phone.trim()) {
+  const rows = normalizedRecords.flatMap(({ record, dialablePhones, normalizedEmail }) => {
+    if (!record.fullName.trim() || !dialablePhones.phoneNumbers.length) {
       invalidRows += 1;
       return [];
     }
 
-    const normalizedPhone = record.phone.trim();
-    const normalizedEmail = record.email.trim().toLowerCase();
+    const normalizedPhone = dialablePhones.phone;
+    const normalizedAltPhone = dialablePhones.altPhone;
     if (
       existingPhones.has(normalizedPhone) ||
+      (normalizedAltPhone && existingPhones.has(normalizedAltPhone)) ||
       (normalizedEmail && existingEmails.has(normalizedEmail))
     ) {
       duplicates += 1;
@@ -1218,6 +1250,9 @@ export async function importLeads(
     }
 
     existingPhones.add(normalizedPhone);
+    if (normalizedAltPhone) {
+      existingPhones.add(normalizedAltPhone);
+    }
     if (normalizedEmail) {
       existingEmails.add(normalizedEmail);
     }
@@ -1226,7 +1261,7 @@ export async function importLeads(
       {
         full_name: record.fullName.trim(),
         phone: normalizedPhone,
-        alt_phone: record.altPhone.trim() || null,
+        alt_phone: normalizedAltPhone || null,
         email: normalizedEmail || null,
         company: record.company.trim() || null,
         job_title: record.jobTitle.trim() || null,

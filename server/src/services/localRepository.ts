@@ -12,7 +12,10 @@ import {
 } from "./callAttemptDiagnostics.js";
 import { buildWorkspaceAnalytics } from "./analyticsService.js";
 import { getRuntimeStatus } from "./runtimeMode.js";
-import { buildLeadDialNumbers } from "./phoneNumberService.js";
+import {
+  buildLeadDialNumbers,
+  normalizeLeadImportPhoneFields,
+} from "./phoneNumberService.js";
 import { getQueueKey, toQueueProgressRecord } from "./queueService.js";
 import { getVoiceFieldStatus, getVoiceProviderConfig } from "./voiceProviderService.js";
 import { buildSipWorkspaceExposure, canManageWorkspaceAdmin } from "./workspaceAccessService.js";
@@ -1220,7 +1223,15 @@ export async function importLeads(
   return withWrite((state) => {
     let duplicates = 0;
     let invalidRows = 0;
-    const existingPhones = new Set(state.leads.map((lead) => lead.phone.trim()));
+    const existingPhones = new Set(
+      state.leads.flatMap((lead) =>
+        buildLeadDialNumbers({
+          phone: lead.phone,
+          altPhone: lead.altPhone,
+          phoneNumbers: lead.phoneNumbers,
+        }),
+      ),
+    );
     const existingEmails = new Set(
       state.leads.map((lead) => lead.email.trim().toLowerCase()).filter(Boolean),
     );
@@ -1234,19 +1245,32 @@ export async function importLeads(
 
     const createdRows = records.flatMap((record) => {
       const fullName = record.fullName.trim();
-      const phone = record.phone.trim();
+      const dialablePhones = normalizeLeadImportPhoneFields({
+        phone: record.phone,
+        altPhone: record.altPhone,
+        phoneNumbers: record.phoneNumbers,
+      });
       const email = record.email.trim().toLowerCase();
 
-      if (!fullName || !phone) {
+      if (!fullName || !dialablePhones.phoneNumbers.length) {
         invalidRows += 1;
         return [];
       }
-      if (existingPhones.has(phone) || (email && existingEmails.has(email))) {
+      const phone = dialablePhones.phone;
+      const altPhone = dialablePhones.altPhone;
+      if (
+        existingPhones.has(phone) ||
+        (altPhone && existingPhones.has(altPhone)) ||
+        (email && existingEmails.has(email))
+      ) {
         duplicates += 1;
         return [];
       }
 
       existingPhones.add(phone);
+      if (altPhone) {
+        existingPhones.add(altPhone);
+      }
       if (email) {
         existingEmails.add(email);
       }
@@ -1255,12 +1279,8 @@ export async function importLeads(
         id: randomUUID(),
         fullName,
         phone,
-        altPhone: record.altPhone.trim(),
-        phoneNumbers: buildLeadDialNumbers({
-          phone,
-          altPhone: record.altPhone.trim(),
-          phoneNumbers: record.phoneNumbers,
-        }),
+        altPhone,
+        phoneNumbers: dialablePhones.phoneNumbers,
         email,
         company: record.company.trim(),
         jobTitle: record.jobTitle.trim(),
