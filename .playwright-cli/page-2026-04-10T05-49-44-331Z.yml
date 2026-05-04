@@ -1,0 +1,34 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - paragraph [ref=e7]: Premium CRM Preview Dialer
+        - heading "Built for agents who need speed, not clutter." [level=1] [ref=e8]
+        - paragraph [ref=e9]: Parse files, map columns, switch dial modes instantly, and log call outcomes from one polished desktop workspace.
+      - generic [ref=e10]:
+        - generic [ref=e11]:
+          - heading "Low-scroll workflows" [level=3] [ref=e13]
+          - generic [ref=e14]: Fixed-height workspaces keep call queues, notes, and outcomes on a single screen.
+        - generic [ref=e15]:
+          - heading "Import precision" [level=3] [ref=e17]
+          - generic [ref=e18]: Validate, preview, deduplicate, and persist imports before agents touch the queue.
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - heading "Sign in" [level=3] [ref=e22]
+        - paragraph [ref=e23]: Authenticate with Supabase Auth to access the dialer.
+      - generic [ref=e25]:
+        - tablist [ref=e26]:
+          - tab "Password" [selected] [ref=e27] [cursor=pointer]
+          - tab "Magic link" [ref=e28] [cursor=pointer]
+        - tabpanel "Password" [ref=e29]:
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - generic [ref=e32]: Email
+              - textbox "Email" [ref=e33]
+            - generic [ref=e34]:
+              - generic [ref=e35]: Password
+              - textbox "Password" [ref=e36]
+            - button "Sign in" [ref=e37] [cursor=pointer]:
+              - img
+              - text: Sign in
+  - region "Notifications alt+T"

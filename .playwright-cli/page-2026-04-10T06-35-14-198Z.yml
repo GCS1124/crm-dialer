@@ -1,0 +1,55 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - paragraph [ref=e7]: Premium CRM Preview Dialer
+        - heading "Built for agents who need speed, not clutter." [level=1] [ref=e8]
+        - paragraph [ref=e9]: Parse files, map columns, switch dial modes instantly, and log call outcomes from one polished desktop workspace.
+      - generic [ref=e10]:
+        - generic [ref=e11]:
+          - heading "Low-scroll workflows" [level=3] [ref=e13]
+          - generic [ref=e14]: Fixed-height workspaces keep call queues, notes, and outcomes on a single screen.
+        - generic [ref=e15]:
+          - heading "Import precision" [level=3] [ref=e17]
+          - generic [ref=e18]: Validate, preview, deduplicate, and persist imports before agents touch the queue.
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - heading "Sign in" [level=3] [ref=e22]
+        - paragraph [ref=e23]: Authenticate with Supabase Auth to access the dialer.
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - paragraph [ref=e26]: Supabase config is missing.
+          - paragraph [ref=e27]:
+            - text: Add
+            - code [ref=e28]: VITE_SUPABASE_URL
+            - text: and
+            - code [ref=e29]: VITE_SUPABASE_PUBLISHABLE_KEY
+            - text: before testing sign-in, sign-up, or Google OAuth.
+        - generic [ref=e30]:
+          - tablist [ref=e31]:
+            - tab "Sign in" [selected] [ref=e32] [cursor=pointer]
+            - tab "Create account" [ref=e33] [cursor=pointer]
+          - tabpanel "Sign in" [ref=e34]:
+            - button "Continue with Google" [disabled]:
+              - img
+              - text: Continue with Google
+            - generic [ref=e37]: or use email
+            - generic [ref=e39]:
+              - tablist [ref=e40]:
+                - tab "Password" [selected] [ref=e41] [cursor=pointer]
+                - tab "Magic link" [ref=e42] [cursor=pointer]
+              - tabpanel "Password" [ref=e43]:
+                - generic [ref=e44]:
+                  - generic [ref=e45]:
+                    - generic [ref=e46]: Email
+                    - textbox "Email" [disabled] [ref=e47]
+                  - generic [ref=e48]:
+                    - generic [ref=e49]: Password
+                    - textbox "Password" [disabled] [ref=e50]
+                  - button "Sign in" [disabled]:
+                    - img
+                    - text: Sign in
+        - generic [ref=e51]:
+          - paragraph [ref=e52]: Google sign-in setup
+          - paragraph [ref=e53]: Enable the Google provider in Supabase Auth and add your local/dev redirect URLs in both Google Cloud and Supabase before testing OAuth.
+  - region "Notifications alt+T"
