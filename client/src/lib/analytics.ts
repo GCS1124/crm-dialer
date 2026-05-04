@@ -10,6 +10,7 @@ import type {
   TopAgentDatum,
   User,
   UserRole,
+  WorkspaceAnalytics,
 } from "../types";
 import { isPast, isToday } from "./utils";
 
@@ -287,6 +288,35 @@ export function getTopAgents(leads: Lead[], users: User[]): TopAgentDatum[] {
     });
 
   return metrics.sort((left, right) => right.conversions - left.conversions);
+}
+
+export function buildWorkspaceAnalytics(
+  leads: Lead[],
+  users: User[],
+  currentUser: User,
+): WorkspaceAnalytics {
+  const scopedUserId = currentUser.role === "agent" ? currentUser.id : undefined;
+
+  return {
+    agentMetrics:
+      currentUser.role === "agent" ? getAgentDashboardMetrics(leads, currentUser.id) : null,
+    adminMetrics: currentUser.role === "agent" ? null : getAdminDashboardMetrics(leads),
+    callbackCounts: {
+      today: getCallbackBuckets(leads, scopedUserId).today.length,
+      overdue: getCallbackBuckets(leads, scopedUserId).overdue.length,
+      upcoming: getCallbackBuckets(leads, scopedUserId).upcoming.length,
+    },
+    performanceData: getDailyPerformance(leads, scopedUserId),
+    dispositionData: getDispositionBreakdown(leads, scopedUserId),
+    pipelineData: getPipelineSummary(leads),
+    statusData: getLeadStatusDistribution(leads),
+    topAgents: getTopAgents(leads, users),
+    focusMetrics: [],
+    recommendedLeads: [],
+    activityFeed: [],
+    riskMetrics: [],
+    duplicateInsights: [],
+  };
 }
 
 export function getPipelineSummary(leads: Lead[]): ChartDatum[] {
