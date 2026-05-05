@@ -204,7 +204,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
 
     if (pathname === "/queue" && method === "GET") {
       const user = await requireSessionUser();
-      const workspace = await loadWorkspace(user);
+      const workspace = await loadWorkspace(user, options.token ?? null);
       return (await loadQueueCursor(
         user,
         workspace.leads,
@@ -227,7 +227,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
         typeof body.currentLeadId === "string" ? body.currentLeadId : null,
         readNumber(body.currentPhoneIndex, 0),
       );
-      const workspace = await loadWorkspace(user);
+      const workspace = await loadWorkspace(user, options.token ?? null);
       return (await loadQueueCursor(user, workspace.leads, queueSort, queueFilter, queueScope)) as T;
     }
 
@@ -246,7 +246,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
         body.outcome === "restart"
           ? body.outcome
           : "completed";
-      const workspace = await loadWorkspace(user);
+      const workspace = await loadWorkspace(user, options.token ?? null);
       const nextCursor = computeNextQueueCursor(
         workspace.leads,
         user,
@@ -272,7 +272,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
       const queueScope = readString(body.queueScope ?? route.searchParams.get("scope"), "default");
       const queueSort = toQueueSort(readString(body.queueSort ?? route.searchParams.get("sort"), "priority"));
       const queueFilter = toQueueFilter(readString(body.queueFilter ?? route.searchParams.get("filter"), "all"));
-      const workspace = await loadWorkspace(user);
+      const workspace = await loadWorkspace(user, options.token ?? null);
       const nextCursor = computeNextQueueCursor(
         workspace.leads,
         user,
@@ -341,7 +341,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
         user,
       );
 
-      const workspace = await loadWorkspace(user);
+      const workspace = await loadWorkspace(user, options.token ?? null);
       const nextCursor = computeNextQueueCursor(
         workspace.leads,
         user,
@@ -445,7 +445,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
 
     if (pathname === "/users" && method === "GET") {
       const user = await requireSessionUser();
-      const workspace = await loadWorkspace(user);
+      const workspace = await loadWorkspace(user, options.token ?? null);
       return { items: workspace.users, total: workspace.users.length } as T;
     }
 
@@ -478,7 +478,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
 
     if (pathname === "/sip-profiles" && method === "GET") {
       const user = await requireSessionUser();
-      const workspace = await loadWorkspace(user);
+      const workspace = await loadWorkspace(user, options.token ?? null);
       return { profiles: workspace.sipProfiles } as T;
     }
 
