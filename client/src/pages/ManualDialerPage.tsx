@@ -45,6 +45,7 @@ export function ManualDialerPage() {
       nationalNumberLength: 10,
     });
   }, [dialTarget]);
+  const isManualDialNumberValid = Boolean(manualDialNumber);
 
   useEffect(() => {
     if (!activeCall) {
@@ -87,9 +88,9 @@ export function ManualDialerPage() {
     if (!dialTarget || callInProgress) {
       return;
     }
-    const callNumber = manualDialNumber || dialTarget;
+    const callNumber = manualDialNumber;
     if (!callNumber) {
-      setDialPadMessage("Enter a valid phone number.");
+      setDialPadMessage("Enter a valid 10-digit US phone number.");
       return;
     }
 
@@ -241,7 +242,7 @@ export function ManualDialerPage() {
                 size="sm"
                 className="w-full"
                 onClick={() => void handleDialPadCall()}
-                disabled={!dialTarget || callInProgress}
+                disabled={!isManualDialNumberValid || callInProgress}
               >
                 <PhoneCall size={14} />
                 {callInProgress ? "Call in progress" : "Call number"}

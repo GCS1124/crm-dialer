@@ -32,6 +32,32 @@ test("formats session dial numbers as US numbers even when the user timezone is 
   );
 });
 
+test("rejects non-US dial numbers instead of silently forwarding them", () => {
+  assert.equal(
+    formatManualDialNumberForCountry("1", {
+      callingCode: "1",
+      nationalNumberLength: 10,
+    }),
+    "",
+  );
+
+  assert.equal(
+    formatManualDialNumberForCountry("+919528409189", {
+      callingCode: "1",
+      nationalNumberLength: 10,
+    }),
+    "",
+  );
+
+  assert.equal(
+    formatDialNumberForSession("+919528409189", {
+      callerId: "908089@umsg.uvcpbx.in",
+      timezone: "Asia/Calcutta",
+    }),
+    "",
+  );
+});
+
 test("normalizes SIP targets by stripping the plus from E.164 numbers", () => {
   assert.equal(
     normalizeDialTarget("+19528409189", "umsg.uvcpbx.in", "1"),

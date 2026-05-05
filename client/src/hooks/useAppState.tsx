@@ -1294,7 +1294,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       callerId: voiceConfig.callerId ?? activeSipProfile?.callerId,
       timezone: lead?.timezone ?? currentUser?.timezone,
     });
-    const outboundDialNumber = formattedDialNumber || queueDialedNumber;
+    if (!formattedDialNumber) {
+      await failCallSession("Enter a valid 10-digit US phone number.", startedAt, "session_start");
+      throw new Error("Enter a valid 10-digit US phone number.");
+    }
+
+    const outboundDialNumber = formattedDialNumber;
     const displayName = (input?.displayName ?? lead?.fullName ?? queueDialedNumber).trim();
 
     if (!callLeadId && currentLeadId) {

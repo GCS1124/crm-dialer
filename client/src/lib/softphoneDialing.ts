@@ -19,25 +19,32 @@ export function formatDialNumberForCountry(
   const dialTarget = sanitizeDialPadInput(phone.trim());
   const dialDigits = dialTarget.replace(/[^\d]/g, "");
   const callingCode = options.callingCode?.replace(/[^\d]/g, "") ?? "";
+  const expectedLength = options.nationalNumberLength ?? null;
 
   if (!dialTarget) {
     return "";
   }
 
-  if (dialTarget.startsWith("+") || dialDigits.length <= 6 || !callingCode) {
-    return dialTarget;
+  const hasDialSymbols = /[*#]/.test(dialTarget);
+
+  if (!dialTarget.startsWith("+") && dialDigits.length <= 6) {
+    return hasDialSymbols && dialDigits.length > 0 ? dialTarget : "";
   }
 
-  if (dialDigits.startsWith(callingCode)) {
+  if (!callingCode || !expectedLength) {
+    return "";
+  }
+
+  const expectedWithCallingCodeLength = expectedLength + callingCode.length;
+  if (dialDigits.length === expectedLength) {
+    return `+${callingCode}${dialDigits}`;
+  }
+
+  if (dialDigits.length === expectedWithCallingCodeLength && dialDigits.startsWith(callingCode)) {
     return `+${dialDigits}`;
   }
 
-  const expectedLength = options.nationalNumberLength ?? null;
-  if (expectedLength && dialDigits.length !== expectedLength) {
-    return dialDigits;
-  }
-
-  return `+${callingCode}${dialDigits}`;
+  return "";
 }
 
 export function formatManualDialNumberForCountry(
