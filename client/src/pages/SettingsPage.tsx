@@ -115,9 +115,7 @@ export function SettingsPage() {
           <div className="crm-subtle-card px-4 py-4">
             <p className="font-medium text-slate-900 dark:text-white">Auth mode</p>
             <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
-              {settingsStatus.authMode === "supabase"
-                ? "Supabase Auth with backend-issued workspace JWT"
-                : "Local development auth with backend-issued JWT sessions"}
+              Supabase Auth with backend-issued workspace JWT.
             </p>
           </div>
 

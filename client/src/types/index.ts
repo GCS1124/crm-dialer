@@ -369,7 +369,7 @@ export interface VoiceProviderConfig {
 }
 
 export interface WorkspaceSettingsStatus {
-  authMode: "supabase" | "local";
+  authMode: "supabase";
   signupEnabled: boolean;
   importFormats: string[];
   voice: {
@@ -395,7 +395,7 @@ export interface WorkspaceSettingsStatus {
 
 export interface RuntimeStatus {
   backend: "ok";
-  dataMode: "supabase" | "local";
+  dataMode: "supabase";
   signupEnabled: boolean;
   message: string;
   supabase: {

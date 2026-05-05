@@ -46,7 +46,7 @@ import type {
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 function parseRoute(path: string) {
-  return new URL(path, "https://crm.local");
+  return new URL(path, "https://crm.invalid");
 }
 
 function readJsonBody(body: RequestInit["body"]) {
