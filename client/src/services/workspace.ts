@@ -1313,9 +1313,9 @@ function buildWorkspaceSettingsStatus(voice: VoiceSessionResponse): WorkspaceSet
   };
 }
 
-export async function loadWorkspace(currentUser: User): Promise<WorkspacePayload> {
+export async function loadWorkspace(currentUser: User, token?: string | null): Promise<WorkspacePayload> {
   const { users, leads } = await fetchLeadsWorkspace();
-  const session = await loadVoiceSession();
+  const session = await loadVoiceSession(token);
   const sipState = await loadSipProfileState(currentUser, users);
   const usersWithAssignments = await attachSipAssignments(users);
   const currentSessionUser = {

@@ -199,7 +199,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
 
     if (pathname === "/workspace" && method === "GET") {
       const user = await requireSessionUser();
-      return (await loadWorkspace(user)) as T;
+      return (await loadWorkspace(user, options.token ?? null)) as T;
     }
 
     if (pathname === "/queue" && method === "GET") {
@@ -541,7 +541,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
     }
 
     if (pathname === "/runtime" && method === "GET") {
-      const voice = await loadVoiceSession();
+      const voice = await loadVoiceSession(options.token ?? null);
       return {
         backend: "ok" as const,
         dataMode: "supabase" as const,

@@ -89,12 +89,12 @@ enabled = true
 enabled = true
 # Port to use for Supabase Studio.
 port = 54323
-# External URL of the API server that frontend connects to.
+# External URL of the API server that the Studio frontend connects to.
 api_url = "https://uhnbpmzlsuzaxnkbiupc.supabase.co"
 # OpenAI API Key to use for Supabase AI in the Supabase Studio.
 openai_api_key = "env(OPENAI_API_KEY)"
 
-# Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
+# Email testing server. Emails sent with this CLI setup are not actually sent - rather, they
 # are monitored, and you can view the emails that would have been sent from the web interface.
 [inbucket]
 enabled = true
@@ -111,7 +111,7 @@ enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
-# Uncomment to configure local storage buckets
+# Uncomment to configure storage buckets
 # [storage.buckets.images]
 # public = false
 # file_size_limit = "50MiB"
