@@ -31,6 +31,7 @@ import { Button } from "../components/shared/Button";
 import { EmptyState } from "../components/shared/EmptyState";
 import { useAppState } from "../hooks/useAppState";
 import { getQueueLeads } from "../lib/analytics";
+import { buildLeadDestinationOptions } from "../lib/dialerNumbers";
 import { parseLeadFile } from "../lib/csv";
 import {
   cn,
@@ -43,6 +44,7 @@ import {
   getPriorityTone,
   toDatetimeLocalInput,
 } from "../lib/utils";
+import { formatDialNumberForSession } from "../lib/softphoneDialing";
 import type { LeadPriority } from "../types";
 
 type WorkspaceTab = "about" | "notes" | "history" | "timeline";
@@ -156,6 +158,8 @@ export function PreviewDialerPage() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("about");
   const [heroTimer, setHeroTimer] = useState(0);
   const [queueSearch, setQueueSearch] = useState("");
+  const [destinationChoice, setDestinationChoice] = useState("custom");
+  const [customDestination, setCustomDestination] = useState("");
 
   if (!currentUser) {
     return null;
@@ -190,6 +194,34 @@ export function PreviewDialerPage() {
   const headerName = activeCallLead?.fullName || activeCall?.displayName || activeLead?.fullName || "--";
   const headerPhone = activeCallLead?.phone || activeCall?.dialedNumber || activeLead?.phone || "--";
   const headerInitials = getInitials(headerName);
+  const leadDestinationOptions = useMemo(
+    () => buildLeadDestinationOptions(activeLead),
+    [activeLead],
+  );
+  const selectedDestinationOption = useMemo(
+    () =>
+      destinationChoice === "custom"
+        ? null
+        : leadDestinationOptions.find((option) => option.value === destinationChoice) ?? null,
+    [destinationChoice, leadDestinationOptions],
+  );
+  const customDestinationTrimmed = customDestination.trim();
+  const destinationPhone = selectedDestinationOption?.value ?? customDestinationTrimmed;
+  const destinationPhoneIndex =
+    destinationChoice === "custom" ? undefined : selectedDestinationOption?.phoneIndex;
+  const destinationDialNumber = destinationPhone
+    ? formatDialNumberForSession(destinationPhone, {
+        callerId: null,
+        timezone: currentUser?.timezone,
+      })
+    : "";
+  const canCallLead = Boolean(destinationDialNumber) && !activeCall;
+
+  useEffect(() => {
+    const nextChoice = leadDestinationOptions[0]?.value ?? "custom";
+    setDestinationChoice(nextChoice);
+    setCustomDestination("");
+  }, [activeLead?.id, leadDestinationOptions]);
 
   useEffect(() => {
     if (!activeCall) {
@@ -204,6 +236,19 @@ export function PreviewDialerPage() {
 
     return () => window.clearInterval(interval);
   }, [activeCall]);
+
+  const handleCallLead = () => {
+    if (!activeLead || !destinationPhone) {
+      return;
+    }
+
+    void startCall({
+      phone: destinationPhone,
+      leadId: activeLead.id,
+      displayName: activeLead.fullName,
+      phoneIndex: destinationPhoneIndex,
+    }).catch(() => undefined);
+  };
 
   const handleBulkFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -576,7 +621,7 @@ export function PreviewDialerPage() {
                       End call
                     </Button>
                   ) : (
-                    <Button size="md" onClick={() => void startCall().catch(() => undefined)}>
+                    <Button size="md" onClick={handleCallLead} disabled={!canCallLead}>
                       <PhoneCall size={15} />
                       Call
                     </Button>
@@ -598,6 +643,57 @@ export function PreviewDialerPage() {
                 <div className="text-[12px] text-slate-500 dark:text-slate-400">
                   Queue {Math.max(queuePosition, 0)} / {queue.length || 1}
                 </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                    Destination number
+                  </span>
+                  <select
+                    value={destinationChoice}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setDestinationChoice(nextValue);
+                      if (nextValue !== "custom") {
+                        setCustomDestination("");
+                      }
+                    }}
+                    className="crm-input py-2 text-[12px]"
+                  >
+                    {leadDestinationOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                    <option value="custom">Custom number</option>
+                  </select>
+                </label>
+
+                <div className="flex items-end">
+                  <p className="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                    {destinationChoice === "custom" && customDestinationTrimmed
+                      ? `RingCentral will dial ${formatPhone(customDestinationTrimmed)}.`
+                      : selectedDestinationOption
+                      ? `RingCentral will dial ${formatPhone(selectedDestinationOption.value)}.`
+                      : "Choose one of the lead’s numbers or type a custom destination."}
+                  </p>
+                </div>
+
+                {destinationChoice === "custom" ? (
+                  <label className="space-y-1 xl:col-span-2">
+                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                      Custom destination
+                    </span>
+                    <input
+                      value={customDestination}
+                      onChange={(event) => setCustomDestination(event.target.value)}
+                      placeholder="Enter destination phone number"
+                      inputMode="tel"
+                      className="crm-input py-2 text-[12px]"
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
 
@@ -755,8 +851,8 @@ export function PreviewDialerPage() {
                       <Button
                         size="sm"
                         className="w-full"
-                        onClick={() => void startCall().catch(() => undefined)}
-                        disabled={Boolean(activeCall)}
+                        onClick={handleCallLead}
+                        disabled={!canCallLead}
                       >
                         <PhoneCall size={14} />
                         Call now

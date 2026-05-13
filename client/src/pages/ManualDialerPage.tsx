@@ -7,6 +7,7 @@ import { Badge } from "../components/shared/Badge";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { useAppState } from "../hooks/useAppState";
+import { buildWorkspaceDestinationOptions } from "../lib/dialerNumbers";
 import { cn, formatDuration, formatPhone } from "../lib/utils";
 import {
   formatManualDialNumberForCountry,
@@ -19,6 +20,7 @@ export function ManualDialerPage() {
   const navigate = useNavigate();
   const {
     currentUser,
+    leads,
     activeCall,
     callError,
     startCall,
@@ -28,10 +30,15 @@ export function ManualDialerPage() {
   const [dialPadValue, setDialPadValue] = useState("");
   const [dialPadMessage, setDialPadMessage] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [quickDestination, setQuickDestination] = useState("custom");
 
   const dialTarget = useMemo(() => sanitizeDialPadInput(dialPadValue), [dialPadValue]);
   const dialDigits = useMemo(() => dialTarget.replace(/[^\d]/g, ""), [dialTarget]);
   const callInProgress = Boolean(activeCall);
+  const workspaceDestinationOptions = useMemo(
+    () => buildWorkspaceDestinationOptions(leads),
+    [leads],
+  );
 
   const manualDialNumber = useMemo(() => {
     return formatManualDialNumberForCountry(dialTarget, {
@@ -64,6 +71,7 @@ export function ManualDialerPage() {
   const handleDialPadInputChange = (value: string) => {
     setDialPadMessage("");
     setDialPadValue(sanitizeDialPadInput(value));
+    setQuickDestination("custom");
   };
 
   const handleDialPadAppend = (value: string) => {
@@ -94,6 +102,16 @@ export function ManualDialerPage() {
     } catch (error) {
       setDialPadMessage(error instanceof Error ? error.message : "Unable to start that call.");
     }
+  };
+
+  const handleQuickDestinationChange = (value: string) => {
+    setQuickDestination(value);
+    if (value === "custom") {
+      return;
+    }
+
+    setDialPadMessage("");
+    setDialPadValue(value);
   };
 
   return (
@@ -137,7 +155,7 @@ export function ManualDialerPage() {
                 <div>
                   <p className="text-[13px] font-semibold text-slate-900 dark:text-white">Number</p>
                   <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                    Enter a phone number and press Call.
+                    Pick a known destination or enter a custom number.
                   </p>
                 </div>
                 <Badge
@@ -149,6 +167,24 @@ export function ManualDialerPage() {
                   {callStatusLabel}
                 </Badge>
               </div>
+
+              <label className="space-y-1">
+                <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  Quick destination
+                </span>
+                <select
+                  value={quickDestination}
+                  onChange={(event) => handleQuickDestinationChange(event.target.value)}
+                  className="crm-input py-2 text-[12px]"
+                >
+                  <option value="custom">Custom entry</option>
+                  {workspaceDestinationOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               <div className="grid gap-2 sm:grid-cols-[180px_minmax(0,1fr)]">
                 <label className="space-y-1">

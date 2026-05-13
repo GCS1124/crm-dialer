@@ -271,6 +271,7 @@ interface AppStateContextValue {
     phone?: string;
     leadId?: string | null;
     displayName?: string;
+    phoneIndex?: number;
   }) => Promise<void>;
   toggleMute: () => void;
   holdCall: () => void;
@@ -1226,6 +1227,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     phone?: string;
     leadId?: string | null;
     displayName?: string;
+    phoneIndex?: number;
   }) => {
     if (activeCall || wrapUpLeadId) {
       return;
@@ -1243,6 +1245,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       input && Object.prototype.hasOwnProperty.call(input, "leadId")
         ? input.leadId ?? null
         : currentLeadId;
+    const requestedPhoneIndex =
+      input && Object.prototype.hasOwnProperty.call(input, "phoneIndex") &&
+      typeof input.phoneIndex === "number"
+        ? input.phoneIndex
+        : currentPhoneIndex;
     const lead = requestedLeadId
       ? leads.find((item) => item.id === requestedLeadId) ?? null
       : null;
@@ -1254,7 +1261,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const leadPhoneNumbers = lead?.phoneNumbers?.length
       ? lead.phoneNumbers
       : [lead?.phone ?? "", lead?.altPhone ?? ""].filter(Boolean);
-    const queueDialedNumber = (input?.phone ?? leadPhoneNumbers[currentPhoneIndex] ?? leadPhoneNumbers[0] ?? "").trim();
+    const queueDialedNumber = (
+      input?.phone ??
+      leadPhoneNumbers[requestedPhoneIndex] ??
+      leadPhoneNumbers[currentPhoneIndex] ??
+      leadPhoneNumbers[0] ??
+      ""
+    ).trim();
     if (!queueDialedNumber) {
       throw new Error("Phone number not found");
     }
@@ -1288,7 +1301,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     activeCallMetaRef.current = {
       leadId: callLeadId,
       dialedNumber: outboundDialNumber,
-      phoneIndex: currentPhoneIndex,
+      phoneIndex: requestedPhoneIndex,
       startedAt,
       connected: false,
       userHangup: false,
@@ -1307,7 +1320,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     if (callLeadId) {
       try {
-        await persistQueueCursor(callLeadId, currentPhoneIndex);
+        await persistQueueCursor(callLeadId, requestedPhoneIndex);
       } catch (error) {
         await failCallSession(
           error instanceof Error && error.message.trim()
