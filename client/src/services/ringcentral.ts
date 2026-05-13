@@ -65,10 +65,67 @@ async function invokeRingCentralFunction<T>(body: Record<string, unknown>) {
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(await getRingCentralFunctionErrorMessage(error));
   }
 
   return data as T;
+}
+
+function readErrorPayloadMessage(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const values = payload as Record<string, unknown>;
+  if (typeof values.message === "string" && values.message.trim()) {
+    return values.message.trim();
+  }
+
+  if (typeof values.error === "string" && values.error.trim()) {
+    return values.error.trim();
+  }
+
+  if (typeof values.code === "string" && values.code.trim()) {
+    return values.code.trim();
+  }
+
+  return "";
+}
+
+async function getRingCentralFunctionErrorMessage(error: unknown) {
+  const context = error && typeof error === "object" && "context" in error
+    ? (error as { context?: unknown }).context
+    : null;
+
+  if (context instanceof Response) {
+    const status = context.status;
+    const fallback = `RingCentral function failed${status ? ` (${status})` : ""}.`;
+    const text = await context
+      .clone()
+      .text()
+      .catch(() => "");
+
+    if (!text) {
+      return fallback;
+    }
+
+    try {
+      const message = readErrorPayloadMessage(JSON.parse(text));
+      if (message) {
+        return message;
+      }
+    } catch {
+      return text.length > 300 ? `${text.slice(0, 300)}...` : text;
+    }
+
+    return fallback;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unable to reach RingCentral settings.";
 }
 
 function getDefaultRedirectUri() {

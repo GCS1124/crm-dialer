@@ -1,8 +1,63 @@
 import { createClient, type SupabaseClient, type User as SupabaseUser } from "npm:@supabase/supabase-js@2.49.1";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() ?? "";
-const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim() ?? "";
-const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ?? "";
+
+function getFirstEnvValue(names: string[]) {
+  for (const name of names) {
+    const value = Deno.env.get(name)?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function getKeyFromDictionary(name: string) {
+  const value = Deno.env.get(name)?.trim();
+  if (!value) {
+    return "";
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error(`Invalid Supabase environment variable: ${name}`);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return "";
+  }
+
+  const values = parsed as Record<string, unknown>;
+  const defaultKey = values.default;
+  if (typeof defaultKey === "string" && defaultKey.trim()) {
+    return defaultKey.trim();
+  }
+
+  for (const key of Object.values(values)) {
+    if (typeof key === "string" && key.trim()) {
+      return key.trim();
+    }
+  }
+
+  return "";
+}
+
+function getPublishableKey() {
+  return (
+    getFirstEnvValue(["SUPABASE_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY"]) ||
+    getKeyFromDictionary("SUPABASE_PUBLISHABLE_KEYS")
+  );
+}
+
+function getSecretKey() {
+  return (
+    getFirstEnvValue(["SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) ||
+    getKeyFromDictionary("SUPABASE_SECRET_KEYS")
+  );
+}
 
 function requireEnv(value: string, name: string) {
   if (!value) {
@@ -15,7 +70,10 @@ function requireEnv(value: string, name: string) {
 export function createAnonClient(authorization?: string | null) {
   return createClient(
     requireEnv(supabaseUrl, "SUPABASE_URL"),
-    requireEnv(supabaseAnonKey, "SUPABASE_ANON_KEY"),
+    requireEnv(
+      getPublishableKey(),
+      "SUPABASE_PUBLISHABLE_KEYS, SUPABASE_PUBLISHABLE_KEY, or SUPABASE_ANON_KEY",
+    ),
     {
       global: authorization
         ? {
@@ -34,7 +92,10 @@ export function createAnonClient(authorization?: string | null) {
 export function createServiceClient() {
   return createClient(
     requireEnv(supabaseUrl, "SUPABASE_URL"),
-    requireEnv(supabaseServiceRoleKey, "SUPABASE_SERVICE_ROLE_KEY"),
+    requireEnv(
+      getSecretKey(),
+      "SUPABASE_SECRET_KEYS, SUPABASE_SECRET_KEY, or SUPABASE_SERVICE_ROLE_KEY",
+    ),
     {
       auth: {
         persistSession: false,

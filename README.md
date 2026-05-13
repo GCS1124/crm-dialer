@@ -84,6 +84,8 @@ Required Supabase secrets for the RingCentral function:
 - `RINGCENTRAL_CLIENT_SECRET`
 - `RINGCENTRAL_SERVER_URL` if you use a non-default RingCentral environment
 
+The Edge Functions also use Supabase's built-in API key secrets. The shared function helper supports both current hosted defaults (`SUPABASE_PUBLISHABLE_KEYS` / `SUPABASE_SECRET_KEYS`) and legacy/local names (`SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`).
+
 If you are using the provided RingCentral app registration, keep the redirect URI registered in RingCentral aligned with the CRM origin, for example `https://crm-dialer-client.vercel.app`.
 
 ## Vercel deployment
