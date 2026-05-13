@@ -186,29 +186,18 @@ export function ManualDialerPage() {
                 </select>
               </label>
 
-              <div className="grid gap-2 sm:grid-cols-[180px_minmax(0,1fr)]">
-                <label className="space-y-1">
-                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                    Country
-                  </span>
-                  <div className="crm-input flex items-center py-2 text-[12px] text-slate-700 dark:text-slate-200">
-                    United States (+1)
-                  </div>
-                </label>
-
-                <label className="space-y-1">
-                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                    Phone number
-                  </span>
-                  <input
-                    value={dialPadValue}
-                    onChange={(event) => handleDialPadInputChange(event.target.value)}
-                    placeholder="Enter number"
-                    inputMode="tel"
-                    className="crm-input text-[13px] tracking-[0.18em]"
-                  />
-                </label>
-              </div>
+              <label className="space-y-1">
+                <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                  Phone number
+                </span>
+                <input
+                  value={dialPadValue}
+                  onChange={(event) => handleDialPadInputChange(event.target.value)}
+                  placeholder="Enter number"
+                  inputMode="tel"
+                  className="crm-input text-[13px] tracking-[0.18em]"
+                />
+              </label>
 
               {manualDialNumber && dialDigits.length > 6 && !dialTarget.startsWith("+") ? (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
