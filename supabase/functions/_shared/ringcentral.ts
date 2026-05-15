@@ -26,8 +26,7 @@ function isRingCentralForwardingNumber(value: RingCentralPhoneNumber) {
   const features = value.features ?? [];
   return (
     value.usageType === "ForwardedNumber" ||
-    features.includes("CallForwarding") ||
-    features.includes("CallFlip")
+    features.includes("CallForwarding")
   );
 }
 

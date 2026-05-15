@@ -9,6 +9,7 @@ import {
 
 import { getQueueLeads } from "../lib/analytics";
 import { apiRequest } from "../lib/api";
+import { selectRingCentralCallerId } from "../lib/ringcentral";
 import {
   formatDialNumberForSession,
 } from "../lib/softphoneDialing";
@@ -1428,6 +1429,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const outboundDialNumber = formattedDialNumber;
     const displayName = (input?.displayName ?? lead?.fullName ?? queueDialedNumber).trim();
+    const selectedCallerId = selectRingCentralCallerId(
+      ringCentralStatus.availableCallerIds,
+      ringCentralStatus.selectedCallerId,
+    );
 
     if (!ringCentralStatus.connected) {
       await failCallSession(
@@ -1481,7 +1486,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     try {
       const ringOut = await placeRingOutCallAction({
         to: outboundDialNumber,
-        callerId: ringCentralStatus.selectedCallerId,
+        callerId: selectedCallerId || null,
         playPrompt: false,
       });
       const ringOutId = ringOut?.id ?? null;

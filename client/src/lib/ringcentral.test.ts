@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildRingCentralAuthorizationUrl,
   buildRingOutRequestPayload,
+  isRingCentralOutboundNumber,
   selectRingCentralCallerId,
 } from "./ringcentral";
 
@@ -58,6 +59,28 @@ test("prefers a forwarding number over a plain caller-id number", () => {
     [
       { phoneNumber: "18005550123", features: ["CallerId"] },
       { phoneNumber: "18005550124", features: ["CallForwarding"], usageType: "ForwardedNumber" },
+    ],
+    null,
+  );
+
+  assert.equal(callerId, "18005550124");
+});
+
+test("does not treat call flip devices as RingOut numbers", () => {
+  assert.equal(
+    isRingCentralOutboundNumber({
+      phoneNumber: "18005550125",
+      features: ["CallFlip"],
+    }),
+    false,
+  );
+});
+
+test("skips call flip devices when choosing the default RingOut number", () => {
+  const callerId = selectRingCentralCallerId(
+    [
+      { phoneNumber: "18005550123", features: ["CallFlip"] },
+      { phoneNumber: "18005550124", features: ["CallerId"] },
     ],
     null,
   );

@@ -17,12 +17,27 @@ import {
 
 const dialPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
 
+function openSystemDialer(phone: string) {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const normalized = phone.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  window.location.href = `tel:${encodeURIComponent(normalized)}`;
+  return true;
+}
+
 export function ManualDialerPage() {
   const navigate = useNavigate();
   const {
     currentUser,
     leads,
     activeCall,
+    ringCentralStatus,
     wrapUpLeadId,
     callError,
     startCall,
@@ -82,11 +97,15 @@ export function ManualDialerPage() {
   };
 
   const handleDialPadAppend = (value: string) => {
-    handleDialPadInputChange(`${dialPadValue}${value}`);
+    setDialPadMessage("");
+    setQuickDestination("custom");
+    setDialPadValue((current) => sanitizeDialPadInput(`${current}${value}`));
   };
 
   const handleDialPadBackspace = () => {
-    handleDialPadInputChange(dialPadValue.slice(0, -1));
+    setDialPadMessage("");
+    setQuickDestination("custom");
+    setDialPadValue((current) => sanitizeDialPadInput(current.slice(0, -1)));
   };
 
   const handleDialPadCall = async () => {
@@ -100,6 +119,17 @@ export function ManualDialerPage() {
     }
 
     setDialPadMessage("");
+
+    if (!ringCentralStatus.connected) {
+      const opened = openSystemDialer(callNumber);
+      setDialPadMessage(
+        opened
+          ? "RingCentral is not connected, so your phone app was opened instead."
+          : "Connect RingCentral in Settings before placing calls.",
+      );
+      return;
+    }
+
     try {
       await startCall({
         phone: callNumber,
@@ -108,7 +138,13 @@ export function ManualDialerPage() {
         phoneIndex: matchedLead?.phoneIndex,
       });
     } catch (error) {
-      setDialPadMessage(error instanceof Error ? error.message : "Unable to start that call.");
+      const message = error instanceof Error ? error.message : "Unable to start that call.";
+      const opened = openSystemDialer(callNumber);
+      setDialPadMessage(
+        opened
+          ? `RingCentral call failed (${message}). Your phone app was opened instead.`
+          : message,
+      );
     }
   };
 
@@ -175,6 +211,11 @@ export function ManualDialerPage() {
                   {callStatusLabel}
                 </Badge>
               </div>
+              {!ringCentralStatus.connected ? (
+                <p className="text-[11px] text-amber-600 dark:text-amber-300">
+                  RingCentral is not connected. The call button will hand off to your phone app.
+                </p>
+              ) : null}
 
               <label className="space-y-1">
                 <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
@@ -253,28 +294,16 @@ export function ManualDialerPage() {
                 disabled={!isManualDialNumberValid || callInProgress}
               >
                 <PhoneCall size={14} />
-                {callInProgress ? "Call in progress" : "Call number"}
+                {callInProgress
+                  ? "Call in progress"
+                  : ringCentralStatus.connected
+                    ? "Call number"
+                    : "Open phone app"}
               </Button>
 
               {dialPadMessage ? (
                 <p className="text-[12px] text-rose-600 dark:text-rose-300">{dialPadMessage}</p>
               ) : null}
-            </Card>
-
-              <Card className="space-y-3 p-5">
-              <div>
-                <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
-                  RingCentral RingOut
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                  Call places a RingOut call with the formatted number. The CRM keeps the lead
-                  queue, timer, and wrap-up flow.
-                </p>
-              </div>
-              <div className="crm-subtle-card px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
-                The number is normalized to US format first, then sent to RingCentral with the
-                selected RingOut number.
-              </div>
             </Card>
 
             {activeCall ? (
@@ -326,7 +355,24 @@ export function ManualDialerPage() {
                 </p>
               </div>
               <div className="crm-subtle-card px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
-                Use the keypad or type a number, then press Call number to place the RingOut call.
+                Use the keypad or type a number, then press the button to place the RingOut call
+                or hand off to your phone app.
+              </div>
+            </Card>
+
+            <Card className="space-y-3 p-5">
+              <div>
+                <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
+                  RingCentral RingOut
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Call places a RingOut call with the formatted number. The CRM keeps the lead
+                  queue, timer, and wrap-up flow.
+                </p>
+              </div>
+              <div className="crm-subtle-card px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
+                The number is normalized to US format first, then sent to RingCentral with the
+                selected RingOut number.
               </div>
             </Card>
           </div>
