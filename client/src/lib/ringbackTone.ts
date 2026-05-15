@@ -1,6 +1,6 @@
 const RINGBACK_ON_DURATION_MS = 2000;
 const RINGBACK_OFF_DURATION_MS = 4000;
-const RINGBACK_GAIN_LEVEL = 0.04;
+const RINGBACK_GAIN_LEVEL = 0.12;
 const RINGBACK_FREQUENCIES = [440, 480];
 
 export interface RingbackGainNodeLike {

@@ -1497,6 +1497,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       fallbackOpened: false,
       attemptPersisted: false,
     };
+    startRingbackTone();
     setActiveCall({
       leadId: callLeadId,
       dialedNumber: outboundDialNumber,
@@ -1506,7 +1507,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       muted: false,
       recordingEnabled: false,
     });
-    startRingbackTone();
 
     if (callLeadId) {
       try {
