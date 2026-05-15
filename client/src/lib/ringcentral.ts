@@ -22,6 +22,19 @@ function normalizePhoneNumber(value: string) {
   return value.replace(/[^\d]/g, "");
 }
 
+function formatE164PhoneNumber(value: string) {
+  const digits = normalizePhoneNumber(value);
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+${digits}`;
+  }
+
+  if (digits.length === 10) {
+    return `+1${digits}`;
+  }
+
+  return value.trim();
+}
+
 function isRingCentralForwardingNumber(value: RingCentralPhoneNumber) {
   const features = value.features ?? [];
   return (
@@ -95,7 +108,7 @@ export function buildRingOutRequestPayload(input: {
 }): RingOutRequestPayload {
   const payload: RingOutRequestPayload = {
     to: {
-      phoneNumber: normalizePhoneNumber(input.to),
+      phoneNumber: formatE164PhoneNumber(input.to),
     },
     playPrompt: input.playPrompt ?? false,
   };
@@ -103,7 +116,7 @@ export function buildRingOutRequestPayload(input: {
   const normalizedCallerId = input.callerId ? normalizePhoneNumber(input.callerId) : "";
   if (normalizedCallerId) {
     payload.from = {
-      phoneNumber: normalizedCallerId,
+      phoneNumber: formatE164PhoneNumber(normalizedCallerId),
     };
   }
 

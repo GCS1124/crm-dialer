@@ -35,8 +35,8 @@ test("builds a RingOut payload with the selected caller id", () => {
       playPrompt: false,
     }),
     {
-      from: { phoneNumber: "15551112222" },
-      to: { phoneNumber: "19528409189" },
+      from: { phoneNumber: "+15551112222" },
+      to: { phoneNumber: "+19528409189" },
       playPrompt: false,
     },
   );
