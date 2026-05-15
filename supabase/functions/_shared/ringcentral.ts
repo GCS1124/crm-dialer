@@ -19,6 +19,11 @@ export interface RingOutRequestPayload {
   playPrompt: boolean;
 }
 
+export interface RingCentralRequestError extends Error {
+  status?: number;
+  errorCode?: string | null;
+}
+
 function normalizePhoneNumber(value: string) {
   return value.replace(/[^\d]/g, "");
 }
@@ -42,6 +47,118 @@ function isRingCentralForwardingNumber(value: RingCentralPhoneNumber) {
     value.usageType === "ForwardedNumber" ||
     features.includes("CallForwarding")
   );
+}
+
+function readText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readRingCentralErrorCode(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const record = payload as Record<string, unknown>;
+  for (const value of [record.errorCode, record.error_code]) {
+    const text = readText(value);
+    if (text) {
+      return text;
+    }
+  }
+
+  const errors = record.errors;
+  if (!Array.isArray(errors)) {
+    return "";
+  }
+
+  for (const error of errors) {
+    if (!error || typeof error !== "object") {
+      continue;
+    }
+
+    const errorRecord = error as Record<string, unknown>;
+    for (const value of [errorRecord.errorCode, errorRecord.error_code]) {
+      const text = readText(value);
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  return "";
+}
+
+function readRingCentralErrorMessage(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const record = payload as Record<string, unknown>;
+  for (const value of [record.message, record.error_description]) {
+    const text = readText(value);
+    if (text) {
+      return text;
+    }
+  }
+
+  const errors = record.errors;
+  if (!Array.isArray(errors)) {
+    return "";
+  }
+
+  for (const error of errors) {
+    if (!error || typeof error !== "object") {
+      continue;
+    }
+
+    const errorRecord = error as Record<string, unknown>;
+    for (const value of [errorRecord.message, errorRecord.description]) {
+      const text = readText(value);
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  return "";
+}
+
+export function createRingCentralRequestError(
+  status: number,
+  payload: unknown,
+  fallbackMessage: string,
+) {
+  const errorCode = readRingCentralErrorCode(payload);
+  const message = readRingCentralErrorMessage(payload) || fallbackMessage;
+  const error = new Error(errorCode ? `${message} (${errorCode})` : message) as RingCentralRequestError;
+  error.status = status;
+  error.errorCode = errorCode || null;
+  return error;
+}
+
+export function isRingCentralAuthorizationError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  return Number((error as { status?: unknown }).status) === 401;
+}
+
+export async function retryRingCentralRequestAfterRefresh<T>(input: {
+  accessToken: string;
+  refreshAccessToken: () => Promise<string>;
+  request: (accessToken: string) => Promise<T>;
+}) {
+  try {
+    return await input.request(input.accessToken);
+  } catch (error) {
+    if (!isRingCentralAuthorizationError(error)) {
+      throw error;
+    }
+
+    const refreshedAccessToken = await input.refreshAccessToken();
+    return await input.request(refreshedAccessToken);
+  }
 }
 
 export function formatRingCentralPhoneNumber(value: string) {

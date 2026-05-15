@@ -3,8 +3,10 @@ import { createServiceClient, getAuthenticatedUser } from "../_shared/supabase.t
 import {
   buildRingCentralAuthorizationUrl,
   buildRingOutRequestPayload,
+  createRingCentralRequestError,
   formatRingCentralPhoneNumber,
   isRingCentralOutboundNumber,
+  retryRingCentralRequestAfterRefresh,
   RINGCENTRAL_TELEPHONY_SESSION_FILTER,
   selectRingCentralCallerId,
   type RingCentralPhoneNumber,
@@ -37,6 +39,11 @@ interface RingCentralIntegrationRow {
   subscription_expires_at: string | null;
   webhook_validation_token: string | null;
   last_inbound_event_at: string | null;
+  active_telephony_session_id: string | null;
+  active_telephony_party_id: string | null;
+  active_telephony_direction: string | null;
+  active_telephony_status_code: string | null;
+  active_telephony_updated_at: string | null;
   connected_at: string;
   updated_at: string;
 }
@@ -247,12 +254,19 @@ async function fetchRingCentralAccountInfo(accessToken: string) {
   });
 
   const text = await response.text();
-  const data = text ? (JSON.parse(text) as RingCentralAccountResponse & { message?: string }) : {};
+  const data = text
+    ? (JSON.parse(text) as RingCentralAccountResponse & {
+      message?: string;
+      error_description?: string;
+      errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+    })
+    : {};
 
   if (!response.ok) {
-    throw Object.assign(
-      new Error(data.message || `RingCentral account lookup failed (${response.status}).`),
-      { status: response.status },
+    throw createRingCentralRequestError(
+      response.status,
+      data,
+      `RingCentral account lookup failed (${response.status}).`,
     );
   }
 
@@ -261,46 +275,69 @@ async function fetchRingCentralAccountInfo(accessToken: string) {
   };
 }
 
-async function fetchRingCentralCallerIds(accessToken: string) {
-  const response = await fetch(
-    getRingCentralApiUrl("/restapi/v1.0/account/~/extension/~/phone-number?page=1&perPage=100"),
-    {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
+async function fetchRingCentralCallerIds(
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string>,
+) {
+  const request = async (token: string) => {
+    const response = await fetch(
+      getRingCentralApiUrl("/restapi/v1.0/account/~/extension/~/phone-number?page=1&perPage=100"),
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       },
-    },
-  );
+    );
 
-  const text = await response.text();
-  const data = text ? (JSON.parse(text) as RingCentralCallerNumberResponse & { message?: string }) : {};
+    const text = await response.text();
+    const data = text
+      ? (JSON.parse(text) as RingCentralCallerNumberResponse & {
+        message?: string;
+        error_description?: string;
+        errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+      })
+      : {};
 
-  if (!response.ok) {
-    throw Object.assign(new Error(data.message || `RingCentral caller ID lookup failed (${response.status}).`), {
-      status: response.status,
-    });
+    if (!response.ok) {
+      throw createRingCentralRequestError(
+        response.status,
+        data,
+        `RingCentral caller ID lookup failed (${response.status}).`,
+      );
+    }
+
+    return (data.records ?? [])
+      .map((record): RingCentralPhoneNumber | null => {
+        const phoneNumber = typeof record.phoneNumber === "string" ? normalizeNumber(record.phoneNumber) : "";
+        if (!phoneNumber) {
+          return null;
+        }
+
+        const usageType = typeof record.usageType === "string" ? record.usageType : null;
+        const features = Array.isArray(record.features)
+          ? record.features.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+          : [];
+
+        return {
+          phoneNumber,
+          usageType,
+          features,
+          label: `${formatRingCentralPhoneNumber(phoneNumber)}${usageType ? ` - ${usageType}` : ""}`,
+        } as RingCentralPhoneNumber;
+      })
+      .filter((value): value is RingCentralPhoneNumber => Boolean(value));
+  };
+
+  if (!refreshAccessToken) {
+    return await request(accessToken);
   }
 
-  return (data.records ?? [])
-    .map((record) => {
-      const phoneNumber = typeof record.phoneNumber === "string" ? normalizeNumber(record.phoneNumber) : "";
-      if (!phoneNumber) {
-        return null;
-      }
-
-      const usageType = typeof record.usageType === "string" ? record.usageType : null;
-      const features = Array.isArray(record.features)
-        ? record.features.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-        : [];
-
-      return {
-        phoneNumber,
-        usageType,
-        features,
-        label: `${formatRingCentralPhoneNumber(phoneNumber)}${usageType ? ` - ${usageType}` : ""}`,
-      } satisfies RingCentralPhoneNumber;
-    })
-    .filter((value): value is RingCentralPhoneNumber => Boolean(value));
+  return await retryRingCentralRequestAfterRefresh({
+    accessToken,
+    refreshAccessToken,
+    request,
+  });
 }
 
 async function loadIntegration(
@@ -310,7 +347,7 @@ async function loadIntegration(
   const { data, error } = await serviceClient
     .from("ringcentral_integrations")
     .select(
-      "app_user_id, account_id, extension_id, access_token, refresh_token, token_type, scope, access_token_expires_at, refresh_token_expires_at, selected_caller_id, subscription_id, subscription_expires_at, webhook_validation_token, last_inbound_event_at, connected_at, updated_at",
+      "app_user_id, account_id, extension_id, access_token, refresh_token, token_type, scope, access_token_expires_at, refresh_token_expires_at, selected_caller_id, subscription_id, subscription_expires_at, webhook_validation_token, last_inbound_event_at, active_telephony_session_id, active_telephony_party_id, active_telephony_direction, active_telephony_status_code, active_telephony_updated_at, connected_at, updated_at",
     )
     .eq("app_user_id", workspaceUserId)
     .maybeSingle();
@@ -341,6 +378,11 @@ async function saveIntegration(
     subscription_expires_at: row.subscription_expires_at ?? null,
     webhook_validation_token: row.webhook_validation_token ?? null,
     last_inbound_event_at: row.last_inbound_event_at ?? null,
+    active_telephony_session_id: row.active_telephony_session_id ?? null,
+    active_telephony_party_id: row.active_telephony_party_id ?? null,
+    active_telephony_direction: row.active_telephony_direction ?? null,
+    active_telephony_status_code: row.active_telephony_status_code ?? null,
+    active_telephony_updated_at: row.active_telephony_updated_at ?? null,
     connected_at: row.connected_at ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -349,6 +391,32 @@ async function saveIntegration(
   if (error) {
     throw Object.assign(new Error(error.message), { status: 500 });
   }
+}
+
+async function refreshIntegration(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  row: RingCentralIntegrationRow,
+) {
+  const refreshed = await fetchRingCentralToken({
+    grant_type: "refresh_token",
+    refresh_token: row.refresh_token,
+  });
+
+  const updatedRow: RingCentralIntegrationRow = {
+    ...row,
+    access_token: refreshed.access_token,
+    refresh_token: refreshed.refresh_token ?? row.refresh_token,
+    token_type: refreshed.token_type ?? row.token_type,
+    scope: refreshed.scope ?? row.scope,
+    access_token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
+    refresh_token_expires_at: refreshed.refresh_token_expires_in
+      ? new Date(Date.now() + refreshed.refresh_token_expires_in * 1000).toISOString()
+      : row.refresh_token_expires_at,
+    updated_at: new Date().toISOString(),
+  };
+
+  await saveIntegration(serviceClient, updatedRow);
+  return updatedRow;
 }
 
 async function saveIntegrationFromToken(
@@ -383,6 +451,11 @@ async function saveIntegrationFromToken(
     refresh_token_expires_at: refreshTokenExpiresAt,
     selected_caller_id: selectedCallerId,
     connected_at: new Date().toISOString(),
+    active_telephony_session_id: null,
+    active_telephony_party_id: null,
+    active_telephony_direction: null,
+    active_telephony_status_code: null,
+    active_telephony_updated_at: null,
   });
 
   return buildIntegrationStatus(serviceClient, workspaceUserId);
@@ -409,68 +482,88 @@ async function requestRingCentralSubscription(
   accessToken: string,
   subscriptionId: string | null,
   validationToken: string,
+  refreshAccessToken?: () => Promise<string>,
 ) {
-  const body = JSON.stringify({
-    eventFilters: [RINGCENTRAL_TELEPHONY_SESSION_FILTER],
-    deliveryMode: {
-      transportType: "WebHook",
-      address: buildRingCentralWebhookUrl(),
-      validationToken,
-    },
-  });
-
-  let response = await fetch(
-    subscriptionId
-      ? getRingCentralApiUrl(`/restapi/v1.0/subscription/${encodeURIComponent(subscriptionId)}`)
-      : getRingCentralApiUrl("/restapi/v1.0/subscription"),
-    {
-      method: subscriptionId ? "PUT" : "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+  const request = async (token: string) => {
+    const body = JSON.stringify({
+      eventFilters: [RINGCENTRAL_TELEPHONY_SESSION_FILTER],
+      deliveryMode: {
+        transportType: "WebHook",
+        address: buildRingCentralWebhookUrl(),
+        validationToken,
       },
-      body,
-    },
-  );
-
-  let text = await response.text();
-  let data = text ? (JSON.parse(text) as Record<string, unknown> & { message?: string; error_description?: string }) : {};
-
-  if (!response.ok && response.status === 404 && subscriptionId) {
-    response = await fetch(getRingCentralApiUrl("/restapi/v1.0/subscription"), {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body,
     });
 
-    text = await response.text();
-    data = text ? (JSON.parse(text) as Record<string, unknown> & { message?: string; error_description?: string }) : {};
-  }
-
-  if (!response.ok) {
-    throw Object.assign(
-      new Error(
-        typeof data.message === "string"
-          ? data.message
-          : typeof data.error_description === "string"
-            ? data.error_description
-            : `RingCentral subscription request failed (${response.status}).`,
-      ),
-      { status: response.status },
+    let response = await fetch(
+      subscriptionId
+        ? getRingCentralApiUrl(`/restapi/v1.0/subscription/${encodeURIComponent(subscriptionId)}`)
+        : getRingCentralApiUrl("/restapi/v1.0/subscription"),
+      {
+        method: subscriptionId ? "PUT" : "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body,
+      },
     );
+
+    let text = await response.text();
+    let data = text
+      ? (JSON.parse(text) as Record<string, unknown> & {
+        message?: string;
+        error_description?: string;
+        errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+      })
+      : {};
+
+    if (!response.ok && response.status === 404 && subscriptionId) {
+      response = await fetch(getRingCentralApiUrl("/restapi/v1.0/subscription"), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body,
+      });
+
+      text = await response.text();
+      data = text
+        ? (JSON.parse(text) as Record<string, unknown> & {
+          message?: string;
+          error_description?: string;
+          errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+        })
+        : {};
+    }
+
+    if (!response.ok) {
+      throw createRingCentralRequestError(
+        response.status,
+        data,
+        `RingCentral subscription request failed (${response.status}).`,
+      );
+    }
+
+    const parsed = parseRingCentralSubscriptionResponse(data);
+    if (!parsed.id || !parsed.expirationTime) {
+      throw new Error("RingCentral subscription response was incomplete.");
+    }
+
+    return parsed;
+  };
+
+  if (!refreshAccessToken) {
+    return await request(accessToken);
   }
 
-  const parsed = parseRingCentralSubscriptionResponse(data);
-  if (!parsed.id || !parsed.expirationTime) {
-    throw new Error("RingCentral subscription response was incomplete.");
-  }
-
-  return parsed;
+  return await retryRingCentralRequestAfterRefresh({
+    accessToken,
+    refreshAccessToken,
+    request,
+  });
 }
 
 async function deleteRingCentralWebhookSubscription(accessToken: string, subscriptionId: string) {
@@ -487,14 +580,17 @@ async function deleteRingCentralWebhookSubscription(accessToken: string, subscri
 
   if (!response.ok && response.status !== 404) {
     const text = await response.text();
-    const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-    throw Object.assign(
-      new Error(
-        typeof data.message === "string"
-          ? data.message
-          : `RingCentral subscription delete failed (${response.status}).`,
-      ),
-      { status: response.status },
+    const data = text
+      ? (JSON.parse(text) as Record<string, unknown> & {
+        message?: string;
+        error_description?: string;
+        errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+      })
+      : {};
+    throw createRingCentralRequestError(
+      response.status,
+      data,
+      `RingCentral subscription delete failed (${response.status}).`,
     );
   }
 }
@@ -503,6 +599,7 @@ async function ensureRingCentralWebhookSubscription(
   serviceClient: ReturnType<typeof createServiceClient>,
   workspaceUserId: string,
   accessToken: string,
+  refreshAccessToken?: () => Promise<string>,
 ) {
   const integration = await loadIntegration(serviceClient, workspaceUserId);
   if (!integration) {
@@ -517,7 +614,12 @@ async function ensureRingCentralWebhookSubscription(
     });
   }
 
-  const subscription = await requestRingCentralSubscription(accessToken, integration.subscription_id, validationToken);
+  const subscription = await requestRingCentralSubscription(
+    accessToken,
+    integration.subscription_id,
+    validationToken,
+    refreshAccessToken,
+  );
   const updatedIntegration: RingCentralIntegrationRow = {
     ...integration,
     subscription_id: subscription.id,
@@ -554,26 +656,7 @@ async function refreshIntegrationIfNeeded(
     return row;
   }
 
-  const refreshed = await fetchRingCentralToken({
-    grant_type: "refresh_token",
-    refresh_token: row.refresh_token,
-  });
-
-  const updatedRow: RingCentralIntegrationRow = {
-    ...row,
-    access_token: refreshed.access_token,
-    refresh_token: refreshed.refresh_token ?? row.refresh_token,
-    token_type: refreshed.token_type ?? row.token_type,
-    scope: refreshed.scope ?? row.scope,
-    access_token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
-    refresh_token_expires_at: refreshed.refresh_token_expires_in
-      ? new Date(Date.now() + refreshed.refresh_token_expires_in * 1000).toISOString()
-      : row.refresh_token_expires_at,
-    updated_at: new Date().toISOString(),
-  };
-
-  await saveIntegration(serviceClient, updatedRow);
-  return updatedRow;
+  return await refreshIntegration(serviceClient, row);
 }
 
 function mapRingCentralStatus(
@@ -609,12 +692,16 @@ async function buildIntegrationStatus(
     return buildEmptyStatus();
   }
 
-  const activeRow = options.refresh === false ? row : await refreshIntegrationIfNeeded(serviceClient, workspaceUserId, row);
+  let activeRow = options.refresh === false ? row : await refreshIntegrationIfNeeded(serviceClient, workspaceUserId, row);
   let callerIds: RingCentralPhoneNumber[] = [];
   let message: string | null = null;
 
   try {
-    callerIds = await fetchRingCentralCallerIds(activeRow.access_token);
+    callerIds = await fetchRingCentralCallerIds(activeRow.access_token, async () => {
+      const refreshed = await refreshIntegration(serviceClient, activeRow);
+      activeRow = refreshed;
+      return refreshed.access_token;
+    });
   } catch (error) {
     message = error instanceof Error ? error.message : "Unable to load RingCentral numbers.";
   }
@@ -632,7 +719,11 @@ async function buildIntegrationStatus(
   }
 
   try {
-    await ensureRingCentralWebhookSubscription(serviceClient, workspaceUserId, activeRow.access_token);
+    await ensureRingCentralWebhookSubscription(serviceClient, workspaceUserId, activeRow.access_token, async () => {
+      const refreshed = await refreshIntegration(serviceClient, activeRow);
+      activeRow = refreshed;
+      return refreshed.access_token;
+    });
   } catch (error) {
     const webhookMessage =
       error instanceof Error ? error.message : "Unable to configure RingCentral call alerts.";
@@ -778,28 +869,44 @@ async function handleRingOut(
     playPrompt,
   });
 
-  const response = await fetch(getRingCentralApiUrl("/restapi/v1.0/account/~/extension/~/ring-out"), {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${refreshed.access_token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+  const performRingOutRequest = async (accessToken: string) => {
+    const response = await fetch(getRingCentralApiUrl("/restapi/v1.0/account/~/extension/~/ring-out"), {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-  const text = await response.text();
-  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-  if (!response.ok) {
-    throw Object.assign(
-      new Error(
-        typeof data.message === "string"
-          ? data.message
-          : `RingCentral ring-out request failed (${response.status}).`,
-      ),
-      { status: response.status },
-    );
-  }
+    const text = await response.text();
+    const data = text
+      ? (JSON.parse(text) as Record<string, unknown> & {
+        message?: string;
+        error_description?: string;
+        errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+      })
+      : {};
+    if (!response.ok) {
+      throw createRingCentralRequestError(
+        response.status,
+        data,
+        `RingCentral ring-out request failed (${response.status}).`,
+      );
+    }
+
+    return data;
+  };
+
+  const data = await retryRingCentralRequestAfterRefresh({
+    accessToken: refreshed.access_token,
+    refreshAccessToken: async () => {
+      const next = await refreshIntegration(serviceClient, refreshed);
+      return next.access_token;
+    },
+    request: performRingOutRequest,
+  });
 
   const ringOutStatus = data.status && typeof data.status === "object" ? (data.status as Record<string, unknown>) : {};
   return jsonResponse({

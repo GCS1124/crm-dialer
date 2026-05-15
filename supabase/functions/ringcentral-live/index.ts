@@ -1,5 +1,9 @@
 import { jsonResponse, optionsResponse } from "../_shared/http.ts";
 import { createServiceClient, getAuthenticatedUser } from "../_shared/supabase.ts";
+import {
+  createRingCentralRequestError,
+  retryRingCentralRequestAfterRefresh,
+} from "../_shared/ringcentral.ts";
 
 interface AppUserRow {
   id: string;
@@ -17,6 +21,11 @@ interface RingCentralIntegrationRow {
   access_token_expires_at: string;
   refresh_token_expires_at: string | null;
   selected_caller_id: string | null;
+  active_telephony_session_id: string | null;
+  active_telephony_party_id: string | null;
+  active_telephony_direction: string | null;
+  active_telephony_status_code: string | null;
+  active_telephony_updated_at: string | null;
   connected_at: string;
   updated_at: string;
 }
@@ -56,6 +65,30 @@ function readRingOutId(value: unknown) {
   }
 
   return "";
+}
+
+function readBoolean(value: unknown) {
+  return value === true || value === "true";
+}
+
+function readText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isRingOutConnectedStatus(data: unknown) {
+  if (!data || typeof data !== "object") {
+    return false;
+  }
+
+  const record = data as Record<string, unknown>;
+  const status = record.status && typeof record.status === "object"
+    ? (record.status as Record<string, unknown>)
+    : null;
+  if (!status) {
+    return false;
+  }
+
+  return ["callStatus", "callerStatus", "calleeStatus"].some((key) => readText(status[key]) === "Success");
 }
 
 function requireRingCentralClientId() {
@@ -140,7 +173,7 @@ async function loadIntegration(
   const { data, error } = await serviceClient
     .from("ringcentral_integrations")
     .select(
-      "app_user_id, account_id, extension_id, access_token, refresh_token, token_type, scope, access_token_expires_at, refresh_token_expires_at, selected_caller_id, connected_at, updated_at",
+      "app_user_id, account_id, extension_id, access_token, refresh_token, token_type, scope, access_token_expires_at, refresh_token_expires_at, selected_caller_id, active_telephony_session_id, active_telephony_party_id, active_telephony_direction, active_telephony_status_code, active_telephony_updated_at, connected_at, updated_at",
     )
     .eq("app_user_id", workspaceUserId)
     .maybeSingle();
@@ -162,20 +195,10 @@ async function saveIntegration(
   }
 }
 
-function isAccessTokenExpired(row: RingCentralIntegrationRow) {
-  const expiry = new Date(row.access_token_expires_at).getTime();
-  return Number.isFinite(expiry) ? expiry <= Date.now() + 60_000 : true;
-}
-
-async function refreshIntegrationIfNeeded(
+async function refreshIntegration(
   serviceClient: ReturnType<typeof createServiceClient>,
-  workspaceUserId: string,
   row: RingCentralIntegrationRow,
 ) {
-  if (!isAccessTokenExpired(row)) {
-    return row;
-  }
-
   const refreshed = await fetchRingCentralToken({
     grant_type: "refresh_token",
     refresh_token: row.refresh_token,
@@ -198,6 +221,103 @@ async function refreshIntegrationIfNeeded(
   return updatedRow;
 }
 
+function isAccessTokenExpired(row: RingCentralIntegrationRow) {
+  const expiry = new Date(row.access_token_expires_at).getTime();
+  return Number.isFinite(expiry) ? expiry <= Date.now() + 60_000 : true;
+}
+
+async function refreshIntegrationIfNeeded(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  workspaceUserId: string,
+  row: RingCentralIntegrationRow,
+) {
+  if (!isAccessTokenExpired(row)) {
+    return row;
+  }
+
+  return await refreshIntegration(serviceClient, row);
+}
+
+async function clearActiveTelephonyCall(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  row: RingCentralIntegrationRow,
+) {
+  await saveIntegration(serviceClient, {
+    ...row,
+    active_telephony_session_id: null,
+    active_telephony_party_id: null,
+    active_telephony_direction: null,
+    active_telephony_status_code: null,
+    active_telephony_updated_at: null,
+  });
+}
+
+async function deleteActiveTelephonyParty(
+  accessToken: string,
+  sessionId: string,
+  partyId: string,
+) {
+  const response = await fetch(
+    getRingCentralApiUrl(
+      `/restapi/v1.0/account/~/telephony/sessions/${encodeURIComponent(sessionId)}/parties/${encodeURIComponent(partyId)}`,
+    ),
+    {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (!response.ok && response.status !== 204 && response.status !== 404) {
+    const text = await response.text();
+    const data = text
+      ? (JSON.parse(text) as Record<string, unknown> & {
+        message?: string;
+        error_description?: string;
+        errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+      })
+      : {};
+    throw createRingCentralRequestError(
+      response.status,
+      data,
+      `RingCentral active call hangup failed (${response.status}).`,
+    );
+  }
+}
+
+async function fetchRingOutStatusData(accessToken: string, ringOutId: string) {
+  const response = await fetch(
+    getRingCentralApiUrl(`/restapi/v1.0/account/~/extension/~/ring-out/${encodeURIComponent(ringOutId)}`),
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  const text = await response.text();
+  const data = text
+    ? (JSON.parse(text) as Record<string, unknown> & {
+      message?: string;
+      error_description?: string;
+      errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+    })
+    : {};
+  if (!response.ok) {
+    throw createRingCentralRequestError(
+      response.status,
+      data,
+      `RingCentral ring-out status request failed (${response.status}).`,
+    );
+  }
+
+  return data;
+}
+
 async function handleRingOutStatus(
   body: Record<string, unknown>,
   serviceClient: ReturnType<typeof createServiceClient>,
@@ -213,30 +333,16 @@ async function handleRingOutStatus(
     return jsonResponse({ message: "RingCentral is not connected." }, { status: 409 });
   }
 
-  const refreshed = await refreshIntegrationIfNeeded(serviceClient, workspaceUser.id, integration);
-  const response = await fetch(
-    getRingCentralApiUrl(`/restapi/v1.0/account/~/extension/~/ring-out/${encodeURIComponent(ringOutId)}`),
-    {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${refreshed.access_token}`,
-      },
-    },
-  );
+  let refreshed = await refreshIntegrationIfNeeded(serviceClient, workspaceUser.id, integration);
 
-  const text = await response.text();
-  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-  if (!response.ok) {
-    throw Object.assign(
-      new Error(
-        typeof data.message === "string"
-          ? data.message
-          : `RingCentral ring-out status request failed (${response.status}).`,
-      ),
-      { status: response.status },
-    );
-  }
+  const data = await retryRingCentralRequestAfterRefresh({
+    accessToken: refreshed.access_token,
+    refreshAccessToken: async () => {
+      const next = await refreshIntegration(serviceClient, refreshed);
+      return next.access_token;
+    },
+    request: (accessToken) => fetchRingOutStatusData(accessToken, ringOutId),
+  });
 
   const ringOutStatus = data.status && typeof data.status === "object" ? (data.status as Record<string, unknown>) : {};
   return jsonResponse({
@@ -284,31 +390,174 @@ async function handleRingOutCancel(
     return jsonResponse({ message: "RingCentral is not connected." }, { status: 409 });
   }
 
-  const refreshed = await refreshIntegrationIfNeeded(serviceClient, workspaceUser.id, integration);
-  const response = await fetch(
-    getRingCentralApiUrl(`/restapi/v1.0/account/~/extension/~/ring-out/${encodeURIComponent(ringOutId)}`),
-    {
-      method: "DELETE",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${refreshed.access_token}`,
+  let refreshed = await refreshIntegrationIfNeeded(serviceClient, workspaceUser.id, integration);
+  const performCancelRequest = async (accessToken: string) => {
+    const response = await fetch(
+      getRingCentralApiUrl(`/restapi/v1.0/account/~/extension/~/ring-out/${encodeURIComponent(ringOutId)}`),
+      {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
       },
-    },
-  );
+    );
 
-  if (!response.ok && response.status !== 204) {
-    const text = await response.text();
-    const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-    throw Object.assign(
-      new Error(
-        typeof data.message === "string"
-          ? data.message
-          : `RingCentral ring-out cancel request failed (${response.status}).`,
-      ),
-      { status: response.status },
+    if (!response.ok && response.status !== 204) {
+      const text = await response.text();
+      const data = text
+        ? (JSON.parse(text) as Record<string, unknown> & {
+          message?: string;
+          error_description?: string;
+          errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+        })
+        : {};
+      throw createRingCentralRequestError(
+        response.status,
+        data,
+        `RingCentral ring-out cancel request failed (${response.status}).`,
+      );
+    }
+
+    return null;
+  };
+
+  await retryRingCentralRequestAfterRefresh({
+    accessToken: refreshed.access_token,
+    refreshAccessToken: async () => {
+      const next = await refreshIntegration(serviceClient, refreshed);
+      return next.access_token;
+    },
+    request: performCancelRequest,
+  });
+
+  await clearActiveTelephonyCall(serviceClient, refreshed);
+
+  return jsonResponse({ success: true });
+}
+
+async function handleRingOutEnd(
+  body: Record<string, unknown>,
+  serviceClient: ReturnType<typeof createServiceClient>,
+  workspaceUser: AppUserRow,
+) {
+  const ringOutId = readRingOutId(body.ringOutId);
+  const connected = readBoolean(body.connected);
+  if (!ringOutId) {
+    return jsonResponse({ message: "ringOutId is required." }, { status: 400 });
+  }
+
+  const integration = await loadIntegration(serviceClient, workspaceUser.id);
+  if (!integration) {
+    return jsonResponse({ message: "RingCentral is not connected." }, { status: 409 });
+  }
+
+  const refreshed = await refreshIntegrationIfNeeded(serviceClient, workspaceUser.id, integration);
+
+  let shouldTreatAsConnected = connected ||
+    Boolean(refreshed.active_telephony_session_id?.trim() && refreshed.active_telephony_party_id?.trim());
+  if (!shouldTreatAsConnected) {
+    try {
+      const ringOutData = await retryRingCentralRequestAfterRefresh({
+        accessToken: refreshed.access_token,
+        refreshAccessToken: async () => {
+          const next = await refreshIntegration(serviceClient, refreshed);
+          return next.access_token;
+        },
+        request: (accessToken) => fetchRingOutStatusData(accessToken, ringOutId),
+      });
+      shouldTreatAsConnected = isRingOutConnectedStatus(ringOutData);
+    } catch {
+      shouldTreatAsConnected = false;
+    }
+  }
+
+  if (!shouldTreatAsConnected) {
+    const performCancelRequest = async (accessToken: string) => {
+      const response = await fetch(
+        getRingCentralApiUrl(`/restapi/v1.0/account/~/extension/~/ring-out/${encodeURIComponent(ringOutId)}`),
+        {
+          method: "DELETE",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+
+      if (!response.ok && response.status !== 204 && response.status !== 404) {
+        const text = await response.text();
+        const data = text
+          ? (JSON.parse(text) as Record<string, unknown> & {
+            message?: string;
+            error_description?: string;
+            errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+          })
+          : {};
+        throw createRingCentralRequestError(
+          response.status,
+          data,
+          `RingCentral ring-out cancel request failed (${response.status}).`,
+        );
+      }
+
+      return null;
+    };
+
+    await retryRingCentralRequestAfterRefresh({
+      accessToken: refreshed.access_token,
+      refreshAccessToken: async () => {
+        const next = await refreshIntegration(serviceClient, refreshed);
+        return next.access_token;
+      },
+      request: performCancelRequest,
+    });
+
+    await clearActiveTelephonyCall(serviceClient, refreshed);
+
+    return jsonResponse({ success: true });
+  }
+
+  let sessionId = refreshed.active_telephony_session_id?.trim() || "";
+  let partyId = refreshed.active_telephony_party_id?.trim() || "";
+  if (connected && (!sessionId || !partyId)) {
+    const retryDelays = [150, 300, 600, 1000];
+    for (const delayMs of retryDelays) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      const latest = await loadIntegration(serviceClient, workspaceUser.id);
+      if (latest) {
+        refreshed = latest;
+        sessionId = refreshed.active_telephony_session_id?.trim() || "";
+        partyId = refreshed.active_telephony_party_id?.trim() || "";
+        if (sessionId && partyId) {
+          break;
+        }
+      }
+    }
+  }
+
+  if (!sessionId || !partyId) {
+    return jsonResponse(
+      { message: "No active call control session is available yet. Try ending the call again in a moment." },
+      { status: 409 },
     );
   }
 
+  const performHangupRequest = async (accessToken: string) => {
+    await deleteActiveTelephonyParty(accessToken, sessionId, partyId);
+    return null;
+  };
+
+  await retryRingCentralRequestAfterRefresh({
+    accessToken: refreshed.access_token,
+    refreshAccessToken: async () => {
+      const next = await refreshIntegration(serviceClient, refreshed);
+      return next.access_token;
+    },
+    request: performHangupRequest,
+  });
+
+  await clearActiveTelephonyCall(serviceClient, refreshed);
   return jsonResponse({ success: true });
 }
 
@@ -330,6 +579,10 @@ Deno.serve(async (request) => {
 
     if (action === "ring-out-cancel") {
       return await handleRingOutCancel(body, serviceClient, workspaceUser);
+    }
+
+    if (action === "ring-out-end") {
+      return await handleRingOutEnd(body, serviceClient, workspaceUser);
     }
 
     return jsonResponse({ message: "Unsupported RingCentral action." }, { status: 400 });

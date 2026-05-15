@@ -1,4 +1,8 @@
 import { jsonResponse, optionsResponse } from "../_shared/http.ts";
+import {
+  createRingCentralRequestError,
+  retryRingCentralRequestAfterRefresh,
+} from "../_shared/ringcentral.ts";
 import { createServiceClient } from "../_shared/supabase.ts";
 import { RINGCENTRAL_TELEPHONY_SESSION_FILTER } from "../_shared/ringcentral.ts";
 
@@ -17,6 +21,11 @@ interface RingCentralIntegrationRow {
   subscription_expires_at: string | null;
   webhook_validation_token: string | null;
   last_inbound_event_at: string | null;
+  active_telephony_session_id: string | null;
+  active_telephony_party_id: string | null;
+  active_telephony_direction: string | null;
+  active_telephony_status_code: string | null;
+  active_telephony_updated_at: string | null;
   connected_at: string;
   updated_at: string;
 }
@@ -30,6 +39,9 @@ interface LeadRow {
 }
 
 interface RingCentralSessionParty {
+  id?: string;
+  accountId?: string;
+  extensionId?: string;
   direction?: string;
   missedCall?: boolean;
   from?: {
@@ -230,6 +242,26 @@ function getPartyDirection(party: RingCentralSessionParty | null) {
   return readString(party?.direction);
 }
 
+function getPartyId(party: RingCentralSessionParty | null) {
+  return readString(party?.id);
+}
+
+function getControllableParty(session: RingCentralSessionBody, extensionId: string | null) {
+  const parties = getSessionParties(session);
+  if (!parties.length) {
+    return null;
+  }
+
+  if (extensionId) {
+    const extensionMatch = parties.find((party) => readString(party.extensionId) === extensionId);
+    if (extensionMatch) {
+      return extensionMatch;
+    }
+  }
+
+  return parties.find((party) => getPartyId(party)) ?? null;
+}
+
 function isLiveAlertStatus(statusCode: string) {
   return statusCode === "Setup" || statusCode === "Proceeding";
 }
@@ -247,7 +279,7 @@ async function loadIntegrationByValidationToken(validationToken: string) {
   const { data, error } = await serviceClient
     .from("ringcentral_integrations")
     .select(
-      "app_user_id, account_id, extension_id, access_token, refresh_token, token_type, scope, access_token_expires_at, refresh_token_expires_at, selected_caller_id, subscription_id, subscription_expires_at, webhook_validation_token, last_inbound_event_at, connected_at, updated_at",
+      "app_user_id, account_id, extension_id, access_token, refresh_token, token_type, scope, access_token_expires_at, refresh_token_expires_at, selected_caller_id, subscription_id, subscription_expires_at, webhook_validation_token, last_inbound_event_at, active_telephony_session_id, active_telephony_party_id, active_telephony_direction, active_telephony_status_code, active_telephony_updated_at, connected_at, updated_at",
     )
     .eq("webhook_validation_token", validationToken)
     .maybeSingle();
@@ -268,7 +300,7 @@ async function loadIntegrationBySubscriptionId(subscriptionId: string) {
   const { data, error } = await serviceClient
     .from("ringcentral_integrations")
     .select(
-      "app_user_id, account_id, extension_id, access_token, refresh_token, token_type, scope, access_token_expires_at, refresh_token_expires_at, selected_caller_id, subscription_id, subscription_expires_at, webhook_validation_token, last_inbound_event_at, connected_at, updated_at",
+      "app_user_id, account_id, extension_id, access_token, refresh_token, token_type, scope, access_token_expires_at, refresh_token_expires_at, selected_caller_id, subscription_id, subscription_expires_at, webhook_validation_token, last_inbound_event_at, active_telephony_session_id, active_telephony_party_id, active_telephony_direction, active_telephony_status_code, active_telephony_updated_at, connected_at, updated_at",
     )
     .eq("subscription_id", subscriptionId)
     .maybeSingle();
@@ -280,6 +312,32 @@ async function loadIntegrationBySubscriptionId(subscriptionId: string) {
   return (data as RingCentralIntegrationRow | null) ?? null;
 }
 
+async function saveActiveTelephonyState(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  integration: RingCentralIntegrationRow,
+  sessionId: string,
+  partyId: string,
+  direction: string,
+  statusCode: string,
+) {
+  const isFinal = isFinalStatus(statusCode);
+  const { error } = await serviceClient
+    .from("ringcentral_integrations")
+    .update({
+      active_telephony_session_id: isFinal ? null : sessionId || null,
+      active_telephony_party_id: isFinal ? null : partyId || null,
+      active_telephony_direction: isFinal ? null : direction || null,
+      active_telephony_status_code: isFinal ? null : statusCode || null,
+      active_telephony_updated_at: isFinal ? null : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("app_user_id", integration.app_user_id);
+
+  if (error) {
+    throw Object.assign(new Error(error.message), { status: 500 });
+  }
+}
+
 async function refreshAccessTokenIfNeeded(
   serviceClient: ReturnType<typeof createServiceClient>,
   integration: RingCentralIntegrationRow,
@@ -289,6 +347,13 @@ async function refreshAccessTokenIfNeeded(
     return integration;
   }
 
+  return await refreshIntegration(serviceClient, integration);
+}
+
+async function refreshIntegration(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  integration: RingCentralIntegrationRow,
+) {
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/x-www-form-urlencoded",
@@ -358,44 +423,24 @@ async function refreshAccessTokenIfNeeded(
 async function ensureWebhookSubscription(
   serviceClient: ReturnType<typeof createServiceClient>,
   integration: RingCentralIntegrationRow,
+  refreshAccessToken?: () => Promise<string>,
 ) {
   if (integration.subscription_id && integration.webhook_validation_token && !isFinalSubscriptionExpiryNeeded(integration)) {
     return integration;
   }
 
+  let activeIntegration = integration;
   const validationToken = integration.webhook_validation_token || crypto.randomUUID();
-  const response = await fetch(
-    integration.subscription_id
-      ? new URL(`/restapi/v1.0/subscription/${encodeURIComponent(integration.subscription_id)}`, ringCentralServerUrl).toString()
-      : new URL("/restapi/v1.0/subscription", ringCentralServerUrl).toString(),
-    {
-      method: integration.subscription_id ? "PUT" : "POST",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${integration.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        eventFilters: [ringCentralWebhookFilter],
-        deliveryMode: {
-          transportType: "WebHook",
-          address: buildRingCentralWebhookUrl(),
-          validationToken,
-        },
-      }),
-    },
-  );
-
-  const text = await response.text();
-  const data = text ? (JSON.parse(text) as JsonRecord & { message?: string; error_description?: string }) : {};
-
-  if (!response.ok) {
-    if (response.status === 404 && integration.subscription_id) {
-      const retryResponse = await fetch(new URL("/restapi/v1.0/subscription", ringCentralServerUrl).toString(), {
-        method: "POST",
+  const request = async (accessToken: string) => {
+    const response = await fetch(
+      activeIntegration.subscription_id
+        ? new URL(`/restapi/v1.0/subscription/${encodeURIComponent(activeIntegration.subscription_id)}`, ringCentralServerUrl).toString()
+        : new URL("/restapi/v1.0/subscription", ringCentralServerUrl).toString(),
+      {
+        method: activeIntegration.subscription_id ? "PUT" : "POST",
         headers: {
           Accept: "application/json",
-          Authorization: `Bearer ${integration.access_token}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -406,39 +451,82 @@ async function ensureWebhookSubscription(
             validationToken,
           },
         }),
-      });
+      },
+    );
 
-      const retryText = await retryResponse.text();
-      const retryData = retryText ? (JSON.parse(retryText) as JsonRecord & { message?: string; error_description?: string }) : {};
-      if (!retryResponse.ok) {
-        throw Object.assign(
-          new Error(
-            typeof retryData.message === "string"
-              ? retryData.message
-              : typeof retryData.error_description === "string"
-                ? retryData.error_description
-                : `RingCentral subscription request failed (${retryResponse.status}).`,
-          ),
-          { status: retryResponse.status },
-        );
+    const text = await response.text();
+    const data = text
+      ? (JSON.parse(text) as JsonRecord & {
+        message?: string;
+        error_description?: string;
+        errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+      })
+      : {};
+
+    if (!response.ok) {
+      if (response.status === 404 && activeIntegration.subscription_id) {
+        const retryResponse = await fetch(new URL("/restapi/v1.0/subscription", ringCentralServerUrl).toString(), {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            eventFilters: [ringCentralWebhookFilter],
+            deliveryMode: {
+              transportType: "WebHook",
+              address: buildRingCentralWebhookUrl(),
+              validationToken,
+            },
+          }),
+        });
+
+        const retryText = await retryResponse.text();
+        const retryData = retryText
+          ? (JSON.parse(retryText) as JsonRecord & {
+            message?: string;
+            error_description?: string;
+            errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+          })
+          : {};
+        if (!retryResponse.ok) {
+          throw createRingCentralRequestError(
+            retryResponse.status,
+            retryData,
+            `RingCentral subscription request failed (${retryResponse.status}).`,
+          );
+        }
+
+        return saveWebhookSubscription(serviceClient, integration, retryData, validationToken);
       }
 
-      return saveWebhookSubscription(serviceClient, integration, retryData, validationToken);
+      throw createRingCentralRequestError(
+        response.status,
+        data,
+        `RingCentral subscription request failed (${response.status}).`,
+      );
     }
 
-    throw Object.assign(
-      new Error(
-        typeof data.message === "string"
-          ? data.message
-          : typeof data.error_description === "string"
-            ? data.error_description
-            : `RingCentral subscription request failed (${response.status}).`,
-      ),
-      { status: response.status },
-    );
+    return saveWebhookSubscription(serviceClient, integration, data, validationToken);
+  };
+
+  if (!refreshAccessToken) {
+    return await request(integration.access_token);
   }
 
-  return saveWebhookSubscription(serviceClient, integration, data, validationToken);
+  return await retryRingCentralRequestAfterRefresh({
+    accessToken: integration.access_token,
+    refreshAccessToken,
+    request: async (accessToken: string) => {
+      const result = await request(accessToken);
+      if (accessToken !== activeIntegration.access_token) {
+        const refreshed = await refreshAccessTokenIfNeeded(serviceClient, activeIntegration);
+        activeIntegration = refreshed;
+      }
+      return result;
+    },
+  });
 }
 
 function isFinalSubscriptionExpiryNeeded(integration: RingCentralIntegrationRow) {
@@ -665,6 +753,25 @@ async function handleWebhookEvent(request: Request, body: unknown) {
 
   const serviceClient = createServiceClient();
   const refreshedIntegration = await refreshAccessTokenIfNeeded(serviceClient, integration);
+  const activeParty = getControllableParty(session, refreshedIntegration.extension_id);
+  const activeSessionId = sessionId || getSessionId(session);
+  const activePartyId = getPartyId(activeParty);
+  const activeDirection = getPartyDirection(activeParty) || "Inbound";
+  const activeStatusCode = getPartyStatusCode(activeParty);
+
+  if (activeSessionId && activePartyId && activeStatusCode) {
+    await saveActiveTelephonyState(
+      serviceClient,
+      refreshedIntegration,
+      activeSessionId,
+      activePartyId,
+      activeDirection,
+      activeStatusCode,
+    );
+  } else if (integration.active_telephony_session_id || integration.active_telephony_party_id) {
+    await saveActiveTelephonyState(serviceClient, refreshedIntegration, "", "", "", "");
+  }
+
   const leadMatch = await findLeadBySession(session);
   if (!leadMatch) {
     return buildWebhookResponse({ ok: true }, validationToken, { status: 200 });

@@ -136,6 +136,7 @@ export function ManualDialerPage() {
         leadId: matchedLead?.lead.id ?? null,
         displayName: matchedLead?.lead.fullName ?? callNumber,
         phoneIndex: matchedLead?.phoneIndex,
+        allowDuringWrapUp: true,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start that call.";

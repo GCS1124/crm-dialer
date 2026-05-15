@@ -235,6 +235,14 @@ export async function cancelRingOutCall(input: { ringOutId: string }) {
   }, "ringcentral-live");
 }
 
+export async function endRingCentralCall(input: { ringOutId: string; connected: boolean }) {
+  await invokeRingCentralFunction<{ success: boolean }>({
+    action: "ring-out-end",
+    ringOutId: input.ringOutId.trim(),
+    connected: input.connected,
+  }, "ringcentral-live");
+}
+
 export function chooseRingCentralCallerId(
   numbers: RingCentralPhoneNumber[],
   preferredCallerId: string | null,

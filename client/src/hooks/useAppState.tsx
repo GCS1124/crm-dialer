@@ -20,8 +20,8 @@ import { toast } from "sonner";
 import {
   beginRingCentralConnection as beginRingCentralConnectionAction,
   completeRingCentralConnection as completeRingCentralConnectionAction,
-  cancelRingOutCall as cancelRingOutCallAction,
   disconnectRingCentral as disconnectRingCentralAction,
+  endRingCentralCall as endRingCentralCallAction,
   getRingOutCallStatus as getRingOutCallStatusAction,
   loadRingCentralStatus as loadRingCentralStatusAction,
   placeRingOutCall as placeRingOutCallAction,
@@ -297,6 +297,7 @@ interface AppStateContextValue {
     leadId?: string | null;
     displayName?: string;
     phoneIndex?: number;
+    allowDuringWrapUp?: boolean;
   }) => Promise<void>;
   toggleMute: () => void;
   holdCall: () => void;
@@ -1412,8 +1413,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     leadId?: string | null;
     displayName?: string;
     phoneIndex?: number;
+    allowDuringWrapUp?: boolean;
   }) => {
-    if (activeCall || wrapUpLeadId) {
+    if (activeCall || (wrapUpLeadId && !input?.allowDuringWrapUp)) {
       return;
     }
 
@@ -1640,11 +1642,29 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     const meta = activeCallMetaRef.current;
-    if (meta?.ringOutId && !meta.connected) {
-      void cancelRingOutCallAction({ ringOutId: meta.ringOutId }).catch(() => undefined);
+    if (!meta?.ringOutId) {
+      finishCallSession(activeCall.leadId, activeCall.startedAt);
+      return;
     }
 
-    finishCallSession(activeCall.leadId, activeCall.startedAt);
+    const startedAt = activeCall.startedAt;
+    const leadId = activeCall.leadId;
+    const ringOutId = meta.ringOutId;
+    void (async () => {
+      try {
+        await endRingCentralCallAction({
+          ringOutId,
+          connected: meta.connected,
+        });
+        if (activeCallMetaRef.current?.startedAt === startedAt) {
+          finishCallSession(leadId, startedAt);
+        }
+      } catch (error) {
+        setCallError(
+          error instanceof Error ? error.message : "Unable to end the RingCentral call.",
+        );
+      }
+    })();
   };
 
   const saveDisposition = async (input: SaveDispositionInput) => {
