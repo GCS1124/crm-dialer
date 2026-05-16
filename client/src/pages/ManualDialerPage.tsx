@@ -9,6 +9,7 @@ import { Card } from "../components/shared/Card";
 import { PostCallPanel } from "../components/dialer/PostCallPanel";
 import { useAppState } from "../hooks/useAppState";
 import { buildWorkspaceDestinationOptions, findLeadForDialNumber } from "../lib/dialerNumbers";
+import { isRingCentralRateLimitError } from "../lib/ringcentral";
 import { cn, formatDuration, formatPhone } from "../lib/utils";
 import {
   formatManualDialNumberForCountry,
@@ -121,7 +122,9 @@ export function ManualDialerPage() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start that call.";
-      setDialPadMessage(message);
+      if (!isRingCentralRateLimitError(message)) {
+        setDialPadMessage(message);
+      }
     }
   };
 

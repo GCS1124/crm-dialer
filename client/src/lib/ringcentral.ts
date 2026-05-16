@@ -159,3 +159,7 @@ export function selectRingCentralCallerId(
   const firstNumber = numbers[0];
   return firstNumber ? normalizePhoneNumber(firstNumber.phoneNumber) : "";
 }
+
+export function isRingCentralRateLimitError(message: string) {
+  return /CMN-30[1-4]|Request rate exceeded/i.test(message);
+}

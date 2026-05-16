@@ -27,6 +27,7 @@ import {
   saveRingCentralCallerId as saveRingCentralCallerIdAction,
   type RingCentralIntegrationStatus,
 } from "../services/ringcentral";
+import { isRingCentralRateLimitError } from "../lib/ringcentral";
 import type {
   ActiveCall,
   CallAttemptFailureStage,
@@ -447,10 +448,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         "Invalid",
       ].includes(value ?? ""),
     ) || [status.callStatus, status.callerStatus, status.calleeStatus].some((value) => value === "NoSessionFound");
-  }
-
-  function shouldSuppressRingCentralRateLimit(message: string) {
-    return /CMN-30[1-4]|Request rate exceeded/i.test(message);
   }
 
   const queue = currentUser
@@ -1093,7 +1090,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return null;
     });
     activeCallMetaRef.current = null;
-    if (shouldSurfaceCallError && !shouldSuppressRingCentralRateLimit(message)) {
+    if (shouldSurfaceCallError && !isRingCentralRateLimitError(message)) {
       setCallError(message);
     } else {
       setCallError(null);
@@ -1647,9 +1644,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           finishCallSession(leadId, startedAt);
         }
       } catch (error) {
-        setCallError(
-          error instanceof Error ? error.message : "Unable to end the RingCentral call.",
-        );
+        const message = error instanceof Error ? error.message : "Unable to end the RingCentral call.";
+        if (isRingCentralRateLimitError(message)) {
+          finishCallSession(leadId, startedAt);
+          return;
+        }
+
+        setCallError(message);
       }
     })();
   };
