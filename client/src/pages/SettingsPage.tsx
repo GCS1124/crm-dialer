@@ -52,7 +52,6 @@ export function SettingsPage() {
   const options = selectableNumbers.length ? selectableNumbers : ringCentralStatus.availableCallerIds;
   const canSaveCallerId =
     ringCentralStatus.connected &&
-    Boolean(selectedCallerId) &&
     selectedCallerId !== (ringCentralStatus.selectedCallerId ?? "");
 
   const handleSaveCallerId = async () => {
@@ -191,7 +190,8 @@ export function SettingsPage() {
                 </p>
                 <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
                   RingOut uses a forwarding target from your RingCentral account. Any supported
-                  number that appears here can be used for outbound dialing.
+                  number that appears here can be used for outbound dialing. Leave it blank to use
+                  RingCentral's default desktop, web, or mobile app target.
                 </p>
               </div>
 

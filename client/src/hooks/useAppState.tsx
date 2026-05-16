@@ -9,7 +9,6 @@ import {
 
 import { getQueueLeads } from "../lib/analytics";
 import { apiRequest } from "../lib/api";
-import { selectRingCentralCallerId } from "../lib/ringcentral";
 import { createRingbackToneController } from "../lib/ringbackTone";
 import type { RingbackAudioContextLike } from "../lib/ringbackTone";
 import {
@@ -1450,10 +1449,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const outboundDialNumber = formattedDialNumber;
     const displayName = (input?.displayName ?? lead?.fullName ?? queueDialedNumber).trim();
-    const selectedCallerId = selectRingCentralCallerId(
-      ringCentralStatus.availableCallerIds,
-      ringCentralStatus.selectedCallerId,
-    );
+    const selectedCallerId = ringCentralStatus.selectedCallerId ?? null;
 
     if (!ringCentralStatus.connected) {
       await failCallSession(
@@ -1462,16 +1458,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         "session_unavailable",
       );
       throw new Error("Connect RingCentral in Settings before placing calls.");
-    }
-
-    if (!selectedCallerId) {
-      await failCallSession(
-        "RingCentral has no usable callback number configured. Add a direct number or forwarding target in RingCentral.",
-        startedAt,
-        "session_start",
-        false,
-      );
-      throw new Error("RingCentral has no usable callback number configured.");
     }
 
     if (!callLeadId && currentLeadId) {
@@ -1518,7 +1504,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     try {
       const ringOut = await placeRingOutCallAction({
         to: outboundDialNumber,
-        callerId: selectedCallerId || null,
+        callerId: selectedCallerId,
         playPrompt: false,
       });
       const ringOutId = ringOut?.id ?? null;

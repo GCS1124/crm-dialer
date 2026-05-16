@@ -8,7 +8,6 @@ import {
   isRingCentralOutboundNumber,
   retryRingCentralRequestAfterRefresh,
   RINGCENTRAL_TELEPHONY_SESSION_FILTER,
-  selectRingCentralCallerId,
   type RingCentralPhoneNumber,
 } from "../_shared/ringcentral.ts";
 
@@ -586,7 +585,6 @@ async function saveIntegrationFromToken(
   const callerIds =
     callerIdsResult.status === "fulfilled" ? callerIdsResult.value : ([] as RingCentralPhoneNumber[]);
   const accountInfo = accountInfoResult.status === "fulfilled" ? accountInfoResult.value : null;
-  const selectedCallerId = selectRingCentralCallerId(callerIds, null) || null;
 
   await saveIntegration(serviceClient, {
     app_user_id: workspaceUserId,
@@ -598,7 +596,7 @@ async function saveIntegrationFromToken(
     scope: token.scope ?? null,
     access_token_expires_at: expiresAt,
     refresh_token_expires_at: refreshTokenExpiresAt,
-    selected_caller_id: selectedCallerId,
+    selected_caller_id: null,
     connected_at: new Date().toISOString(),
     active_telephony_session_id: null,
     active_telephony_party_id: null,
@@ -843,6 +841,7 @@ async function buildIntegrationStatus(
 
   let activeRow = options.refresh === false ? row : await refreshIntegrationIfNeeded(serviceClient, workspaceUserId, row);
   let callerIds: RingCentralPhoneNumber[] = [];
+  let callerIdsLoaded = false;
   let message: string | null = null;
 
   try {
@@ -851,12 +850,19 @@ async function buildIntegrationStatus(
       activeRow = refreshed;
       return refreshed.access_token;
     });
+    callerIdsLoaded = true;
   } catch (error) {
     message = error instanceof Error ? error.message : "Unable to load RingCentral numbers.";
   }
 
-  const selectedCallerId = selectRingCentralCallerId(callerIds, activeRow.selected_caller_id || null) || null;
-  if (selectedCallerId !== (activeRow.selected_caller_id || null)) {
+  const storedSelectedCallerId = activeRow.selected_caller_id ? normalizeNumber(activeRow.selected_caller_id) : null;
+  const selectedCallerId = callerIdsLoaded
+    ? (storedSelectedCallerId && callerIds.some((number) => normalizeNumber(number.phoneNumber) === storedSelectedCallerId)
+        ? storedSelectedCallerId
+        : null)
+    : storedSelectedCallerId;
+
+  if (callerIdsLoaded && selectedCallerId !== storedSelectedCallerId) {
     await saveIntegration(serviceClient, {
       ...activeRow,
       selected_caller_id: selectedCallerId,
@@ -1005,20 +1011,9 @@ async function handleRingOut(
   const status = await buildIntegrationStatus(serviceClient, workspaceUser.id);
   const allowedCallerIds = new Set(status.availableCallerIds.map((number) => normalizeNumber(number.phoneNumber)));
   const normalizedCallerId = normalizeNumber(callerId) || normalizeNumber(status.selectedCallerId ?? "");
-  const selectedCallerId = allowedCallerIds.size
-    ? normalizedCallerId && allowedCallerIds.has(normalizedCallerId)
-      ? normalizedCallerId
-      : ""
-    : "";
-  if (!selectedCallerId) {
-    return jsonResponse(
-      {
-        message:
-          "RingCentral has no usable callback number configured. Add a direct number or forwarding target in RingCentral.",
-      },
-      { status: 409 },
-    );
-  }
+  const selectedCallerId = normalizedCallerId && allowedCallerIds.has(normalizedCallerId)
+    ? normalizedCallerId
+    : null;
   const payload = buildRingOutRequestPayload({
     to,
     callerId: selectedCallerId,

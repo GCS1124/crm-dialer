@@ -42,6 +42,19 @@ test("builds a RingOut payload with the selected caller id", () => {
   );
 });
 
+test("builds a RingOut payload without a caller id when omitted", () => {
+  assert.deepEqual(
+    buildRingOutRequestPayload({
+      to: "+1 (952) 840-9189",
+      playPrompt: true,
+    }),
+    {
+      to: { phoneNumber: "+19528409189" },
+      playPrompt: true,
+    },
+  );
+});
+
 test("uses the first forwarding number when no preferred number is selected", () => {
   const callerId = selectRingCentralCallerId(
     [
