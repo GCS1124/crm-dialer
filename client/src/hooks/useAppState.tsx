@@ -104,34 +104,6 @@ function isMicrophoneAccessError(error: unknown) {
   );
 }
 
-function buildMicrophoneBlockedMessage(openedSystemDialer: boolean) {
-  return openedSystemDialer
-    ? "Browser microphone access is blocked, so the system dialer was opened as a fallback. Keep this call active here and save the outcome when finished."
-    : "Browser microphone access is blocked for this site. Allow microphone access from the address bar site settings, reload the page, and start the call again.";
-}
-
-function openSystemDialer(phone: string) {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  const normalized = phone.trim();
-  if (!normalized) {
-    return false;
-  }
-
-  window.location.href = `tel:${encodeURIComponent(normalized)}`;
-  return true;
-}
-
-function isRingCentralForwardingUnavailable(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return /TEL-108|from field is empty or invalid/i.test(error.message);
-}
-
 async function ensureMicrophoneAccess() {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return;
@@ -1493,39 +1465,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     if (!selectedCallerId) {
-      const opened = openSystemDialer(outboundDialNumber);
-      if (opened) {
-        activeCallMetaRef.current = {
-          leadId: callLeadId,
-          dialedNumber: outboundDialNumber,
-          phoneIndex: requestedPhoneIndex,
-          startedAt,
-          ringOutId: null,
-          connected: false,
-          userHangup: false,
-          fallbackOpened: true,
-          attemptPersisted: false,
-        };
-        setActiveCall({
-          leadId: callLeadId,
-          dialedNumber: outboundDialNumber,
-          displayName,
-          startedAt,
-          status: "manual",
-          muted: false,
-          recordingEnabled: false,
-        });
-        setCallError(null);
-        return;
-      }
-
       await failCallSession(
-        "RingCentral has no forwarding number available, and the phone app could not be opened.",
+        "RingCentral has no usable callback number configured. Add a direct number or forwarding target in RingCentral.",
         startedAt,
         "session_start",
-        true,
+        false,
       );
-      throw new Error("RingCentral has no forwarding number available.");
+      throw new Error("RingCentral has no usable callback number configured.");
     }
 
     if (!callLeadId && currentLeadId) {
@@ -1604,31 +1550,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         void syncRingOutStatus(ringOutId, startedAt);
       }, 2500);
     } catch (error) {
-      if (isRingCentralForwardingUnavailable(error)) {
-        const opened = openSystemDialer(outboundDialNumber);
-        if (opened) {
-          if (activeCallMetaRef.current) {
-            activeCallMetaRef.current.fallbackOpened = true;
-          }
-          setActiveCall((existing) => {
-            if (!existing || existing.startedAt !== startedAt) {
-              return existing;
-            }
-
-            return { ...existing, status: "manual" };
-          });
-          setCallError(null);
-          return;
-        }
-      }
-
+      const errorMessage = error instanceof Error ? error.message : "";
+      const shouldAdvanceQueue =
+        !/no usable callback number configured/i.test(errorMessage);
       await failCallSession(
-        error instanceof Error && error.message.trim()
-          ? error.message
+        errorMessage.trim()
+          ? errorMessage
           : "Unable to place the RingCentral call.",
         startedAt,
         "session_start",
-        true,
+        shouldAdvanceQueue,
       );
       throw error;
     }

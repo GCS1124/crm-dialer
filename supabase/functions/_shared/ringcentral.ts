@@ -41,13 +41,13 @@ function formatE164PhoneNumber(value: string) {
   return value.trim();
 }
 
-function isRingCentralForwardingNumber(value: RingCentralPhoneNumber) {
-  const features = value.features ?? [];
-  return (
-    value.usageType === "ForwardedNumber" ||
-    features.includes("CallForwarding")
-  );
-}
+const RINGCENTRAL_OUTBOUND_USAGE_TYPES = new Set([
+  "MainCompanyNumber",
+  "AdditionalCompanyNumber",
+  "CompanyNumber",
+  "DirectNumber",
+  "ForwardedNumber",
+]);
 
 function readText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -175,7 +175,16 @@ export function formatRingCentralPhoneNumber(value: string) {
 }
 
 export function isRingCentralOutboundNumber(value: RingCentralPhoneNumber) {
-  return Boolean(value.phoneNumber) && isRingCentralForwardingNumber(value);
+  if (!value.phoneNumber) {
+    return false;
+  }
+
+  const features = value.features ?? [];
+  if (features.includes("CallerId") || features.includes("CallForwarding")) {
+    return true;
+  }
+
+  return RINGCENTRAL_OUTBOUND_USAGE_TYPES.has(value.usageType ?? "");
 }
 
 export function buildRingCentralAuthorizationUrl(input: {
@@ -225,22 +234,21 @@ export function selectRingCentralCallerId(
   if (normalizedPreferred) {
     const preferredMatch = numbers.find(
       (number) =>
-        normalizePhoneNumber(number.phoneNumber) === normalizedPreferred &&
-        isRingCentralOutboundNumber(number),
+        normalizePhoneNumber(number.phoneNumber) === normalizedPreferred && isRingCentralOutboundNumber(number),
     );
     if (preferredMatch) {
       return normalizePhoneNumber(preferredMatch.phoneNumber);
     }
   }
 
-  const firstForwardingNumber = numbers.find(isRingCentralOutboundNumber);
-  if (firstForwardingNumber) {
-    return normalizePhoneNumber(firstForwardingNumber.phoneNumber);
+  const firstOutboundNumber = numbers.find(isRingCentralOutboundNumber);
+  if (firstOutboundNumber) {
+    return normalizePhoneNumber(firstOutboundNumber.phoneNumber);
   }
 
-  const firstNonFlipNumber = numbers.find((number) => !(number.features?.includes("CallFlip") ?? false));
-  if (firstNonFlipNumber) {
-    return normalizePhoneNumber(firstNonFlipNumber.phoneNumber);
+  const firstCallerIdNumber = numbers.find((number) => number.features?.includes("CallerId") ?? false);
+  if (firstCallerIdNumber) {
+    return normalizePhoneNumber(firstCallerIdNumber.phoneNumber);
   }
 
   const firstNumber = numbers[0];

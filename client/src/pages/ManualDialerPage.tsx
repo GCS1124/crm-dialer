@@ -17,20 +17,6 @@ import {
 
 const dialPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
 
-function openSystemDialer(phone: string) {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  const normalized = phone.trim();
-  if (!normalized) {
-    return false;
-  }
-
-  window.location.href = `tel:${encodeURIComponent(normalized)}`;
-  return true;
-}
-
 export function ManualDialerPage() {
   const navigate = useNavigate();
   const {
@@ -121,12 +107,7 @@ export function ManualDialerPage() {
     setDialPadMessage("");
 
     if (!ringCentralStatus.connected) {
-      const opened = openSystemDialer(callNumber);
-      setDialPadMessage(
-        opened
-          ? "RingCentral is not connected, so your phone app was opened instead."
-          : "Connect RingCentral in Settings before placing calls.",
-      );
+      setDialPadMessage("Connect RingCentral in Settings before placing calls.");
       return;
     }
 
@@ -140,12 +121,7 @@ export function ManualDialerPage() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start that call.";
-      const opened = openSystemDialer(callNumber);
-      setDialPadMessage(
-        opened
-          ? `RingCentral call failed (${message}). Your phone app was opened instead.`
-          : message,
-      );
+      setDialPadMessage(message);
     }
   };
 
@@ -214,7 +190,7 @@ export function ManualDialerPage() {
               </div>
               {!ringCentralStatus.connected ? (
                 <p className="text-[11px] text-amber-600 dark:text-amber-300">
-                  RingCentral is not connected. The call button will hand off to your phone app.
+                  RingCentral is not connected. Connect it in Settings before placing calls.
                 </p>
               ) : null}
 
@@ -297,9 +273,7 @@ export function ManualDialerPage() {
                 <PhoneCall size={14} />
                 {callInProgress
                   ? "Call in progress"
-                  : ringCentralStatus.connected
-                    ? "Call number"
-                    : "Open phone app"}
+                  : "Call number"}
               </Button>
 
               {dialPadMessage ? (
@@ -356,8 +330,7 @@ export function ManualDialerPage() {
                 </p>
               </div>
               <div className="crm-subtle-card px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
-                Use the keypad or type a number, then press the button to place the RingOut call
-                or hand off to your phone app.
+                Use the keypad or type a number, then press the button to place the RingOut call.
               </div>
             </Card>
 
