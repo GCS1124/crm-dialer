@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildRingCentralAuthorizationUrl,
   buildRingOutRequestPayload,
+  getRingOutProgressState,
   isRingCentralOutboundNumber,
   selectRingCentralCallerId,
   selectRingCentralRingOutFromNumber,
@@ -147,4 +148,73 @@ test("uses forwarding targets as RingOut from numbers", () => {
   );
 
   assert.equal(fromNumber, "18005550124");
+});
+
+test("keeps polling while a RingOut leg is still being established", () => {
+  assert.deepEqual(
+    getRingOutProgressState({
+      callStatus: "CannotReach",
+      callerStatus: "InProgress",
+      calleeStatus: "InProgress",
+    }),
+    {
+      state: "ringing",
+      message: null,
+      advanceQueue: false,
+    },
+  );
+});
+
+test("does not mark RingOut connected until both legs are connected", () => {
+  assert.deepEqual(
+    getRingOutProgressState({
+      callStatus: "InProgress",
+      callerStatus: "Success",
+      calleeStatus: "InProgress",
+    }),
+    {
+      state: "ringing",
+      message: null,
+      advanceQueue: false,
+    },
+  );
+});
+
+test("marks RingOut connected when the aggregate call status succeeds", () => {
+  assert.deepEqual(
+    getRingOutProgressState({
+      callStatus: "Success",
+      callerStatus: "Success",
+      calleeStatus: "Success",
+    }),
+    {
+      state: "connected",
+      message: null,
+      advanceQueue: false,
+    },
+  );
+});
+
+test("keeps the lead selected when RingCentral cannot reach the RingOut device", () => {
+  const progress = getRingOutProgressState({
+    callStatus: "CannotReach",
+    callerStatus: "NoAnswer",
+    calleeStatus: "InProgress",
+  });
+
+  assert.equal(progress.state, "failed");
+  assert.equal(progress.advanceQueue, false);
+  assert.match(progress.message ?? "", /RingOut device or forwarding target/);
+});
+
+test("advances queue when the destination is busy", () => {
+  const progress = getRingOutProgressState({
+    callStatus: "CannotReach",
+    callerStatus: "Success",
+    calleeStatus: "Busy",
+  });
+
+  assert.equal(progress.state, "failed");
+  assert.equal(progress.advanceQueue, true);
+  assert.match(progress.message ?? "", /busy/);
 });

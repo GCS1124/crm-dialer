@@ -1047,7 +1047,8 @@ async function handleRingOut(
   selectedCallerId = selectedCallerId && allowedCallerIds.has(selectedCallerId)
     ? selectedCallerId
     : null;
-  let ringOutFromNumber: string | null = selectRingCentralRingOutFromNumber(status.availableCallerIds, null) || null;
+  const discoveredRingOutFromNumber = selectRingCentralRingOutFromNumber(status.availableCallerIds, null) || null;
+  let ringOutFromNumber: string | null = null;
   let payload = buildRingOutRequestPayload({ to, fromNumber: ringOutFromNumber, callerId: selectedCallerId, playPrompt });
 
   const performRingOutRequest = async (accessToken: string, ringOutPayload: RingOutRequestPayload) => {
@@ -1101,6 +1102,16 @@ async function handleRingOut(
       data = await performRingOutWithRefresh(payload);
       break;
     } catch (error) {
+      if (!payload.from && discoveredRingOutFromNumber && isInvalidRingOutPhoneFieldError(error, "from")) {
+        console.warn("Retrying RingCentral RingOut with the discovered forwarding target.", {
+          appUserId: workspaceUser.id,
+          discoveredFrom: discoveredRingOutFromNumber,
+        });
+        ringOutFromNumber = discoveredRingOutFromNumber;
+        payload = buildRingOutRequestPayload({ to, fromNumber: ringOutFromNumber, callerId: selectedCallerId, playPrompt });
+        continue;
+      }
+
       if (payload.from && isInvalidRingOutPhoneFieldError(error, "from")) {
         console.warn("Retrying RingCentral RingOut without a rejected from number.", {
           appUserId: workspaceUser.id,
@@ -1150,6 +1161,14 @@ async function handleRingOut(
           : typeof ringOutStatus.state === "string"
             ? ringOutStatus.state
             : null,
+      callerStatus:
+        typeof ringOutStatus.callerStatus === "string"
+          ? ringOutStatus.callerStatus
+          : null,
+      calleeStatus:
+        typeof ringOutStatus.calleeStatus === "string"
+          ? ringOutStatus.calleeStatus
+          : null,
       to: payload.to.phoneNumber,
       from: payload.from?.phoneNumber ?? null,
       callerId: payload.callerId?.phoneNumber ?? null,

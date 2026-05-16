@@ -28,6 +28,7 @@ import {
   type RingCentralIntegrationStatus,
 } from "../services/ringcentral";
 import {
+  getRingOutProgressState,
   isRingCentralRateLimitError,
   shouldAdvanceQueueAfterCallFailure,
 } from "../lib/ringcentral";
@@ -412,45 +413,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       window.clearInterval(ringOutStatusPollRef.current);
       ringOutStatusPollRef.current = null;
     }
-  }
-
-  function hasRingOutSuccessStatus(status: {
-    callStatus?: string | null;
-    callerStatus?: string | null;
-    calleeStatus?: string | null;
-  }) {
-    return [status.callStatus, status.callerStatus, status.calleeStatus].some(
-      (value) => value === "Success",
-    );
-  }
-
-  function hasRingOutFinishedStatus(status: {
-    callStatus?: string | null;
-    callerStatus?: string | null;
-    calleeStatus?: string | null;
-  }) {
-    return [status.callStatus, status.callerStatus, status.calleeStatus].some(
-      (value) => value === "Finished",
-    );
-  }
-
-  function hasRingOutFailureStatus(status: {
-    callStatus?: string | null;
-    callerStatus?: string | null;
-    calleeStatus?: string | null;
-  }) {
-    return [status.callStatus, status.callerStatus, status.calleeStatus].some((value) =>
-      [
-        "CannotReach",
-        "NoAnsweringMachine",
-        "Busy",
-        "NoAnswer",
-        "Rejected",
-        "GenericError",
-        "InternationalDisabled",
-        "Invalid",
-      ].includes(value ?? ""),
-    ) || [status.callStatus, status.callerStatus, status.calleeStatus].some((value) => value === "NoSessionFound");
   }
 
   const queue = currentUser
@@ -1130,7 +1092,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (hasRingOutSuccessStatus(ringOutStatus)) {
+    const ringOutProgress = getRingOutProgressState(ringOutStatus);
+    if (ringOutProgress.state === "connected") {
       stopRingbackTone();
       if (!meta.connected) {
         meta.connected = true;
@@ -1146,9 +1109,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const shouldFinish = hasRingOutFinishedStatus(ringOutStatus);
-    const shouldTreatAsFailure = hasRingOutFailureStatus(ringOutStatus);
-    if (!shouldFinish && !shouldTreatAsFailure) {
+    if (ringOutProgress.state === "ringing") {
       return;
     }
 
@@ -1159,12 +1120,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     await failCallSession(
-      shouldFinish
-        ? "RingCentral ended the call before the callee connected."
-        : "RingCentral could not connect the call.",
+      ringOutProgress.message ?? "RingCentral could not connect the call.",
       startedAt,
       "session_start",
-      true,
+      ringOutProgress.advanceQueue,
     );
   }
 
@@ -1524,7 +1483,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         connected: false,
       };
 
-      if (hasRingOutSuccessStatus(ringOut)) {
+      if (getRingOutProgressState(ringOut).state === "connected") {
         stopRingbackTone();
         activeCallMetaRef.current.connected = true;
         setActiveCall((existing) => {
