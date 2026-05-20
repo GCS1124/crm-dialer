@@ -2,7 +2,6 @@ import {
   Building2,
   CalendarClock,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Clock3,
   FileUp,
@@ -15,6 +14,7 @@ import {
   PhoneOff,
   Search,
   SkipForward,
+  SkipBack,
   StickyNote,
   UserRound,
   XCircle,
@@ -131,11 +131,6 @@ export function PreviewDialerPage() {
     queueSort,
     queueFilter,
     setQueueFilter,
-    autoDialEnabled,
-    autoDialDelaySeconds,
-    autoDialCountdown,
-    setAutoDialEnabled,
-    setAutoDialDelaySeconds,
     currentLeadId,
     activeCall,
     wrapUpLeadId,
@@ -221,15 +216,6 @@ export function PreviewDialerPage() {
     : "";
   const canCallLead = Boolean(destinationDialNumber) && !activeCall && !wrapUpLeadId;
   const isIncomingRinging = activeCall?.direction === "incoming" && activeCall?.status === "ringing";
-
-  useEffect(() => {
-    if (!autoDialEnabled) {
-      setAutoDialEnabled(true);
-    }
-    if (autoDialDelaySeconds !== 1) {
-      setAutoDialDelaySeconds(1);
-    }
-  }, [autoDialDelaySeconds, autoDialEnabled, setAutoDialDelaySeconds, setAutoDialEnabled]);
 
   useEffect(() => {
     const nextChoice = leadDestinationOptions[0]?.value ?? "custom";
@@ -348,34 +334,12 @@ export function PreviewDialerPage() {
     ? "Disposition open"
     : activeCall
     ? `${activeCall.status.replace(/_/g, " ")} | ${formatDuration(heroTimer)}`
-    : autoDialEnabled && autoDialCountdown !== null
-    ? `Auto-dial in ${autoDialCountdown}s`
     : "Ready to dial";
   const callStatusTone = wrapUpLeadId
     ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-300"
     : activeCall
     ? "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-500/30 dark:bg-cyan-950/20 dark:text-cyan-300"
     : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300";
-  const leadHighlights = [
-    {
-      label: "Status",
-      value: leadStatusLabel,
-      tone: getLeadStatusTone(activeLead.status),
-    },
-    {
-      label: "Priority",
-      value: activeLead.priority,
-      tone: getPriorityTone(activeLead.priority),
-    },
-    {
-      label: "Queue",
-      value: `${Math.max(queuePosition, 0)} / ${queue.length || 1}`,
-    },
-    {
-      label: "Lead score",
-      value: `${activeLead.leadScore}`,
-    },
-  ];
   const leadDetails = [
     { icon: Mail, label: "Email", value: activeLead.email || "--" },
     { icon: Phone, label: "Phone", value: formatPhone(activeLead.phone) },
@@ -438,6 +402,30 @@ export function PreviewDialerPage() {
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 size="md"
+                variant="secondary"
+                className="w-10 px-0"
+                onClick={previousLead}
+                disabled={Boolean(wrapUpLeadId || activeCall)}
+                aria-label="Back to previous lead"
+                title="Back"
+              >
+                <SkipBack size={15} />
+              </Button>
+
+              <Button
+                size="md"
+                variant="secondary"
+                className="w-10 px-0"
+                onClick={skipLead}
+                disabled={Boolean(wrapUpLeadId || activeCall)}
+                aria-label="Skip current lead"
+                title="Skip"
+              >
+                <SkipForward size={15} />
+              </Button>
+
+              <Button
+                size="md"
                 onClick={() => {
                   if (activeCall) {
                     void endCall();
@@ -470,38 +458,73 @@ export function PreviewDialerPage() {
             <aside className="space-y-4">
               <DetailSection title="Lead snapshot">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[13px] font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
-                    {getInitials(activeLead.fullName)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-[15px] font-semibold text-slate-900 dark:text-white">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[13px] font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+                {getInitials(activeLead.fullName)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-[15px] font-semibold text-slate-900 dark:text-white">
                       {activeLead.fullName}
                     </p>
-                    <p className="truncate text-[13px] text-slate-500 dark:text-slate-400">
-                      {formatPhone(activeLead.phone)}
-                    </p>
-                  </div>
-                </div>
+                <p className="truncate text-[13px] text-slate-500 dark:text-slate-400">
+                  {formatPhone(activeLead.phone)}
+                </p>
+              </div>
+            </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {leadHighlights.map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-950"
-                    >
-                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                        {item.label}
-                      </p>
-                      {item.tone ? (
-                        <Badge className={cn("mt-2", item.tone)}>{item.value}</Badge>
-                      ) : (
-                        <p className="mt-2 text-[13px] font-medium text-slate-900 dark:text-white">
-                          {item.value}
-                        </p>
-                      )}
-                    </div>
+            <div className="space-y-3 pt-4">
+              <div className="flex flex-col gap-2">
+               
+                <select
+                  value={destinationChoice}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setDestinationChoice(nextValue);
+                    if (nextValue !== "custom") {
+                      setCustomDestination("");
+                    }
+                  }}
+                  className="crm-input py-2 text-[12px]"
+                >
+                  {leadDestinationOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
+                  <option value="custom">Custom number</option>
+                </select>
+               
+              </div>
+
+              {destinationChoice === "custom" ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                    Custom number
+                  </p>
+                  <input
+                    value={customDestination}
+                    onChange={(event) => setCustomDestination(event.target.value)}
+                    placeholder="Enter destination phone number"
+                    inputMode="tel"
+                    className="crm-input py-2 text-[12px]"
+                  />
                 </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-4 text-[12px]">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 dark:text-slate-400">Status</span>
+                  <Badge className={getLeadStatusTone(activeLead.status)}>
+                    {leadStatusLabel}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 dark:text-slate-400">Priority</span>
+                  <Badge className={getPriorityTone(activeLead.priority)}>
+                    {activeLead.priority}
+                  </Badge>
+                </div>
+              </div>
+            </div>
               </DetailSection>
 
               <DetailSection title="Contact details">
