@@ -404,25 +404,25 @@ export function PreviewDialerPage() {
               <Button
                 size="md"
                 variant="secondary"
-                className="w-10 px-0"
+                className="w-10 px-0 text-slate-900 dark:text-white"
                 onClick={previousLead}
                 disabled={Boolean(wrapUpLeadId || activeCall)}
                 aria-label="Back to previous lead"
                 title="Back"
               >
-                <SkipBack size={15} />
+                <SkipBack size={16} strokeWidth={2.5} />
               </Button>
 
               <Button
                 size="md"
                 variant="secondary"
-                className="w-10 px-0"
+                className="w-10 px-0 text-slate-900 dark:text-white"
                 onClick={skipLead}
                 disabled={Boolean(wrapUpLeadId || activeCall)}
                 aria-label="Skip current lead"
                 title="Skip"
               >
-                <SkipForward size={15} />
+                <SkipForward size={16} strokeWidth={2.5} />
               </Button>
 
               <Button
