@@ -352,24 +352,24 @@ export function CallsPage() {
 
       {editorOpen ? (
         <div
-          className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-4"
+          className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-3 sm:p-4"
           onClick={() => setEditorOpen(false)}
         >
-          <div className="mx-auto flex min-h-full max-w-[1120px] items-center justify-center">
+          <div className="mx-auto flex min-h-full max-w-[920px] items-center justify-center py-4">
             <div
-              className="w-full rounded-[24px] border border-slate-200 bg-[#eef4fb] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-slate-950"
+              className="flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-[#eef4fb] p-4 shadow-[0_24px_80px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-slate-950"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
                     {editingCall ? "Call details" : "Quick add"}
                   </p>
-                  <h2 className="mt-1 text-[18px] font-semibold text-slate-900 dark:text-white">
+                  <h2 className="mt-1 text-[16px] font-semibold text-slate-900 dark:text-white">
                     {editingCall ? "Edit call log" : "Add call log"}
                   </h2>
                   {editingCall ? (
-                    <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
+                    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                       {formatPhone(editingCall.phone)} | {editingCall.agentName} |{" "}
                       {formatDateTime(editingCall.createdAt)}
                     </p>
@@ -377,280 +377,289 @@ export function CallsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {editingCall ? (
-                    <Button variant="danger" size="sm" onClick={() => void handleDeleteCall(editingCall.id)}>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => void handleDeleteCall(editingCall.id)}
+                    >
                       <Trash2 size={14} />
                       Delete
                     </Button>
                   ) : null}
-                  <Button variant="ghost" onClick={() => setEditorOpen(false)}>
+                  <Button variant="ghost" size="sm" onClick={() => setEditorOpen(false)}>
                     Close
                   </Button>
                 </div>
               </div>
 
-              {editingCall ? (
-                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  <div className="crm-subtle-card p-3">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Lead
-                    </p>
-                    <p className="mt-1 text-[13px] font-semibold text-slate-900 dark:text-white">
-                      {editingCall.leadName}
-                    </p>
-                    <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                      {formatPhone(editingCall.phone)}
-                    </p>
+              <div className="mt-4 flex-1 overflow-y-auto pr-1">
+                {editingCall ? (
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="crm-subtle-card p-3">
+                      <p className="text-[9px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        Lead
+                      </p>
+                      <p className="mt-1 text-[12px] font-semibold text-slate-900 dark:text-white">
+                        {editingCall.leadName}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {formatPhone(editingCall.phone)}
+                      </p>
+                    </div>
+                    <div className="crm-subtle-card p-3">
+                      <p className="text-[9px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        Agent
+                      </p>
+                      <p className="mt-1 text-[12px] font-semibold text-slate-900 dark:text-white">
+                        {editingCall.agentName}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {formatDateTime(editingCall.createdAt)}
+                      </p>
+                    </div>
+                    <div className="crm-subtle-card p-3">
+                      <p className="text-[9px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        Timing
+                      </p>
+                      <p className="mt-1 text-[12px] font-semibold text-slate-900 dark:text-white">
+                        {formatDuration(editingCall.durationSeconds)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {editingCall.followUpAt ? formatDateTime(editingCall.followUpAt) : "Not scheduled"}
+                      </p>
+                    </div>
+                    <div className="crm-subtle-card p-3 md:col-span-2 xl:col-span-3">
+                      <p className="text-[9px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        AI summary
+                      </p>
+                      <p className="mt-1 text-[12px] font-medium text-slate-900 dark:text-white">
+                        {editingCall.aiSummary}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {editingCall.suggestedNextAction}
+                      </p>
+                    </div>
                   </div>
-                  <div className="crm-subtle-card p-3">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Agent
-                    </p>
-                    <p className="mt-1 text-[13px] font-semibold text-slate-900 dark:text-white">
-                      {editingCall.agentName}
-                    </p>
-                    <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                      {formatDateTime(editingCall.createdAt)}
-                    </p>
-                  </div>
-                  <div className="crm-subtle-card p-3">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Timing
-                    </p>
-                    <p className="mt-1 text-[13px] font-semibold text-slate-900 dark:text-white">
-                      {formatDuration(editingCall.durationSeconds)}
-                    </p>
-                    <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                      {editingCall.followUpAt ? formatDateTime(editingCall.followUpAt) : "Not scheduled"}
-                    </p>
-                  </div>
-                  <div className="crm-subtle-card p-3 md:col-span-2 xl:col-span-3">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      AI summary
-                    </p>
-                    <p className="mt-1 text-[13px] font-medium text-slate-900 dark:text-white">
-                      {editingCall.aiSummary}
-                    </p>
-                    <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                      {editingCall.suggestedNextAction}
-                    </p>
-                  </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-                <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="space-y-1.5 text-[11px]">
-                      <span className="font-medium text-slate-700 dark:text-slate-200">Contact</span>
-                      <select
-                        value={form.leadId}
-                        onChange={(event) =>
-                          setForm((current) => ({ ...current, leadId: event.target.value }))
-                        }
-                        disabled={Boolean(editingCall)}
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
-                      >
-                        <option value="">Select lead</option>
-                        {leads.map((lead) => (
-                          <option key={lead.id} value={lead.id}>
-                            {lead.fullName} {lead.company ? `| ${lead.company}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                <div className="mt-4 grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
+                  <div className="space-y-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="space-y-1 text-[10px]">
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                          Contact
+                        </span>
+                        <select
+                          value={form.leadId}
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, leadId: event.target.value }))
+                          }
+                          disabled={Boolean(editingCall)}
+                          className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                        >
+                          <option value="">Select lead</option>
+                          {leads.map((lead) => (
+                            <option key={lead.id} value={lead.id}>
+                              {lead.fullName} {lead.company ? `| ${lead.company}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                    <label className="space-y-1.5 text-[11px]">
-                      <span className="font-medium text-slate-700 dark:text-slate-200">
-                        Call type
-                      </span>
-                      <select
-                        value={form.callType}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            callType: event.target.value as CallType,
-                          }))
-                        }
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
-                      >
-                        <option value="outgoing">Outgoing</option>
-                        <option value="incoming">Incoming</option>
-                      </select>
-                    </label>
-
-                    <label className="space-y-1.5 text-[11px]">
-                      <span className="font-medium text-slate-700 dark:text-slate-200">
-                        Call duration
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={form.durationSeconds}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            durationSeconds: Number(event.target.value || 0),
-                          }))
-                        }
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
-                      />
-                    </label>
-
-                    <label className="space-y-1.5 text-[11px]">
-                      <span className="font-medium text-slate-700 dark:text-slate-200">
-                        Follow-up time
-                      </span>
-                      <input
-                        type="datetime-local"
-                        value={toDatetimeLocalInput(form.callbackAt)}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            callbackAt: event.target.value
-                              ? new Date(event.target.value).toISOString()
-                              : "",
-                          }))
-                        }
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
-                      />
-                    </label>
-
-                    <label className="space-y-1.5 text-[11px]">
-                      <span className="font-medium text-slate-700 dark:text-slate-200">
-                        Priority
-                      </span>
-                      <select
-                        value={form.priority}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            priority: event.target.value as LeadPriority,
-                          }))
-                        }
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
-                      >
-                        <option value="Low">Low</option>
-                        <option value="Medium">Medium</option>
-                        <option value="High">High</option>
-                        <option value="Urgent">Urgent</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                      Note templates
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {noteTemplates.map((template) => (
-                        <button
-                          key={template}
-                          type="button"
-                          onClick={() =>
+                      <label className="space-y-1 text-[10px]">
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                          Call type
+                        </span>
+                        <select
+                          value={form.callType}
+                          onChange={(event) =>
                             setForm((current) => ({
                               ...current,
-                              notes: current.notes ? `${current.notes}\n${template}` : template,
+                              callType: event.target.value as CallType,
                             }))
                           }
-                          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                          className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                         >
-                          {template}
-                        </button>
-                      ))}
+                          <option value="outgoing">Outgoing</option>
+                          <option value="incoming">Incoming</option>
+                        </select>
+                      </label>
+
+                      <label className="space-y-1 text-[10px]">
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                          Call duration
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={form.durationSeconds}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              durationSeconds: Number(event.target.value || 0),
+                            }))
+                          }
+                          className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                        />
+                      </label>
+
+                      <label className="space-y-1 text-[10px]">
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                          Follow-up time
+                        </span>
+                        <input
+                          type="datetime-local"
+                          value={toDatetimeLocalInput(form.callbackAt)}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              callbackAt: event.target.value
+                                ? new Date(event.target.value).toISOString()
+                                : "",
+                            }))
+                          }
+                          className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                        />
+                      </label>
+
+                      <label className="space-y-1 text-[10px]">
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                          Priority
+                        </span>
+                        <select
+                          value={form.priority}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              priority: event.target.value as LeadPriority,
+                            }))
+                          }
+                          className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                        >
+                          <option value="Low">Low</option>
+                          <option value="Medium">Medium</option>
+                          <option value="High">High</option>
+                          <option value="Urgent">Urgent</option>
+                        </select>
+                      </label>
                     </div>
+
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-medium text-slate-700 dark:text-slate-200">
+                        Note templates
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {noteTemplates.map((template) => (
+                          <button
+                            key={template}
+                            type="button"
+                            onClick={() =>
+                              setForm((current) => ({
+                                ...current,
+                                notes: current.notes ? `${current.notes}\n${template}` : template,
+                              }))
+                            }
+                            className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                          >
+                            {template}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="space-y-1 text-[10px]">
+                      <span className="font-medium text-slate-700 dark:text-slate-200">Notes</span>
+                      <textarea
+                        rows={4}
+                        value={form.notes}
+                        onChange={(event) =>
+                          setForm((current) => ({ ...current, notes: event.target.value }))
+                        }
+                        placeholder="Capture objections, buying signals, timing, and any promised next step."
+                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
+                      />
+                    </label>
                   </div>
 
-                  <label className="space-y-1.5 text-[11px]">
-                    <span className="font-medium text-slate-700 dark:text-slate-200">Notes</span>
-                    <textarea
-                      rows={5}
-                      value={form.notes}
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, notes: event.target.value }))
-                      }
-                      placeholder="Capture objections, buying signals, timing, and any promised next step."
-                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-950"
-                    />
-                  </label>
-                </div>
+                  <div className="space-y-4">
+                    <Card className="border border-sky-200 bg-sky-50 p-3 dark:border-sky-500/20 dark:bg-sky-950/20">
+                      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
+                        <Sparkles size={13} />
+                        AI preview
+                      </div>
+                      <p className="mt-2.5 text-[13px] font-semibold text-slate-900 dark:text-white">
+                        {aiPreview.summary}
+                      </p>
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <Badge className={getSentimentTone(aiPreview.sentiment as CallLog["sentiment"])}>
+                          {aiPreview.sentiment}
+                        </Badge>
+                      </div>
+                      <p className="mt-2.5 text-[11px] leading-5 text-slate-600 dark:text-slate-300">
+                        {aiPreview.nextAction}
+                      </p>
+                    </Card>
 
-                <div className="space-y-4">
-                  <Card className="border border-sky-200 bg-sky-50 p-4 dark:border-sky-500/20 dark:bg-sky-950/20">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
-                      <Sparkles size={13} />
-                      AI preview
-                    </div>
-                    <p className="mt-3 text-[14px] font-semibold text-slate-900 dark:text-white">
-                      {aiPreview.summary}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge className={getSentimentTone(aiPreview.sentiment as CallLog["sentiment"])}>
-                        {aiPreview.sentiment}
-                      </Badge>
-                    </div>
-                    <p className="mt-3 text-[12px] leading-6 text-slate-600 dark:text-slate-300">
-                      {aiPreview.nextAction}
-                    </p>
-                  </Card>
+                    <Card className="p-3">
+                      <p className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                        Selected contact
+                      </p>
+                      <p className="mt-2 text-[13px] font-semibold text-slate-900 dark:text-white">
+                        {activeLead?.fullName || "Choose a lead"}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {activeLead
+                          ? `${formatPhone(activeLead.phone)} | ${activeLead.company || "No company"}`
+                          : "The CRM will link this call to the selected lead and update its timeline automatically."}
+                      </p>
+                    </Card>
 
-                  <Card className="p-4">
-                    <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200">
-                      Selected contact
-                    </p>
-                    <p className="mt-2 text-[15px] font-semibold text-slate-900 dark:text-white">
-                      {activeLead?.fullName || "Choose a lead"}
-                    </p>
-                    <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                      {activeLead
-                        ? `${formatPhone(activeLead.phone)} | ${activeLead.company || "No company"}`
-                        : "The CRM will link this call to the selected lead and update its timeline automatically."}
-                    </p>
-                  </Card>
+                    {editorError ? (
+                      <AlertBanner
+                        title="Unable to save call"
+                        description={editorError}
+                        tone="error"
+                      />
+                    ) : null}
 
-                  {editorError ? (
-                    <AlertBanner
-                      title="Unable to save call"
-                      description={editorError}
-                      tone="error"
-                    />
-                  ) : null}
-
-                  <div className="flex justify-end gap-2">
-                    <Button variant="secondary" onClick={() => setEditorOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={async () => {
-                        if (!form.leadId) {
-                          setEditorError("Choose a lead before saving the call log.");
-                          return;
-                        }
-
-                        setSaving(true);
-                        setEditorError("");
-
-                        try {
-                          if (editingCall) {
-                            await updateCallLog(editingCall.id, form);
-                            toast.success("Call log updated.");
-                          } else {
-                            await createCallLog(form);
-                            toast.success("Call log saved.");
+                    <div className="flex justify-end gap-2">
+                      <Button variant="secondary" size="sm" onClick={() => setEditorOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          if (!form.leadId) {
+                            setEditorError("Choose a lead before saving the call log.");
+                            return;
                           }
 
-                          setEditorOpen(false);
-                        } catch (error) {
-                          setEditorError(
-                            error instanceof Error ? error.message : "Unable to save the call log.",
-                          );
-                        } finally {
-                          setSaving(false);
-                        }
-                      }}
-                      disabled={!form.leadId || saving || !currentUser}
-                    >
-                      {saving ? "Saving..." : editingCall ? "Update call" : "Save call"}
-                    </Button>
+                          setSaving(true);
+                          setEditorError("");
+
+                          try {
+                            if (editingCall) {
+                              await updateCallLog(editingCall.id, form);
+                              toast.success("Call log updated.");
+                            } else {
+                              await createCallLog(form);
+                              toast.success("Call log saved.");
+                            }
+
+                            setEditorOpen(false);
+                          } catch (error) {
+                            setEditorError(
+                              error instanceof Error ? error.message : "Unable to save the call log.",
+                            );
+                          } finally {
+                            setSaving(false);
+                          }
+                        }}
+                        disabled={!form.leadId || saving || !currentUser}
+                      >
+                        {saving ? "Saving..." : editingCall ? "Update call" : "Save call"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>

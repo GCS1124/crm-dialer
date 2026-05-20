@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, RotateCcw, XCircle } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
@@ -11,30 +11,8 @@ import {
 } from "../lib/ringcentral";
 import { useAppState } from "../hooks/useAppState";
 
-function StatusRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: boolean;
-}) {
-  return (
-    <div className="crm-subtle-card flex items-center justify-between px-4 py-3">
-      <span className="text-[12px] text-slate-700 dark:text-slate-200">{label}</span>
-      <span
-        className={value ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}
-      >
-        {value ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-      </span>
-    </div>
-  );
-}
-
 export function SettingsPage() {
   const {
-    settingsStatus,
-    theme,
-    setTheme,
     ringCentralStatus,
     connectRingCentral,
     disconnectRingCentral,
@@ -89,185 +67,125 @@ export function SettingsPage() {
         title="Workspace configuration"
       />
 
-      <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <Card className="space-y-4 p-5">
-          <div className="crm-subtle-card flex items-center justify-between px-4 py-4">
-            <div>
-              <p className="font-medium text-slate-900 dark:text-white">Theme</p>
-            </div>
-            <Button variant="secondary" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-              {theme === "dark" ? "Use light" : "Use dark"}
-            </Button>
-          </div>
-
-          <div className="crm-subtle-card px-4 py-4">
-            <p className="font-medium text-slate-900 dark:text-white">Auth mode</p>
-            <p className="mt-1 text-[12px] font-medium text-slate-700 dark:text-slate-200">
-              Supabase Auth
-            </p>
-          </div>
-
-          <div className="crm-subtle-card px-4 py-4">
-            <p className="font-medium text-slate-900 dark:text-white">Signup</p>
-            <p className="mt-1 text-[12px] font-medium text-slate-700 dark:text-slate-200">
-              {settingsStatus.signupEnabled ? "Enabled" : "Disabled"}
-            </p>
-          </div>
-
-          <div className="crm-subtle-card px-4 py-4">
-            <p className="font-medium text-slate-900 dark:text-white">Bulk import</p>
-            <p className="mt-1 text-[12px] font-medium text-slate-700 dark:text-slate-200">
-              {settingsStatus.importFormats.join(" • ")}
-            </p>
-          </div>
+          <PasswordResetPanel mode="settings" />
         </Card>
 
-        <div className="space-y-5">
-          <Card className="space-y-4 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-[18px] font-semibold text-slate-900 dark:text-white">
-                  RingCentral connection
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={() => refreshRingCentralStatus({ force: true })}>
-                  <RotateCcw size={14} />
-                  Refresh
-                </Button>
-                {ringCentralStatus.connected ? (
-                  <Button variant="danger" size="sm" onClick={handleDisconnect}>
-                    Disconnect
-                  </Button>
-                ) : (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => {
-                      setRingCentralActionMessage(null);
-                      void connectRingCentral().catch((error) => {
-                        setRingCentralActionMessage(
-                          error instanceof Error ? error.message : "Unable to start RingCentral connection.",
-                        );
-                      });
-                    }}
-                  >
-                    Connect RingCentral
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="crm-subtle-card px-4 py-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                  Status
-                </p>
-                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-                  {ringCentralStatus.connected ? "Connected" : "Not connected"}
-                </p>
-              </div>
-              <div className="crm-subtle-card px-4 py-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                  Selected caller ID
-                </p>
-                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-                  {ringCentralStatus.selectedRingOutNumber
-                    ? formatRingCentralPhoneNumber(ringCentralStatus.selectedRingOutNumber)
-                    : "RingCentral default"}
-                </p>
-              </div>
-            </div>
-
-            <div className="crm-subtle-card space-y-3 px-4 py-4">
-              <div>
-                <p className="text-sm font-medium text-slate-900 dark:text-white">
-                  Outbound caller ID
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                <label className="block">
-                  <span className="sr-only">RingCentral caller ID number</span>
-                  <select
-                    className="h-10 w-full rounded-[12px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-[#1f7db3] dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    value={selectedRingOutNumber}
-                    onChange={(event) => setSelectedRingOutNumber(event.target.value)}
-                    disabled={!ringCentralStatus.connected}
-                  >
-                    <option value="">Use RingCentral default caller ID</option>
-                    {options.map((number) => (
-                      <option key={number.phoneNumber} value={number.phoneNumber}>
-                        {number.label ?? formatRingCentralPhoneNumber(number.phoneNumber)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <Button
-                  variant="secondary"
-                  onClick={handleSaveRingOutNumber}
-                  disabled={!canSaveRingOutNumber}
-                >
-                  Save caller ID
-                </Button>
-              </div>
-
-              {ringCentralStatus.message ? (
-                <div className="crm-subtle-card px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
-                  {ringCentralStatus.message}
-                </div>
-              ) : null}
-
-              {ringCentralActionMessage ? (
-                <div className="crm-subtle-card px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
-                  {ringCentralActionMessage}
-                </div>
-              ) : null}
-
-              {ringCentralStatus.connectedAt ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="crm-subtle-card px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                    Connected at {new Date(ringCentralStatus.connectedAt).toLocaleString()}
-                  </div>
-                  <div className="crm-subtle-card px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                    {options.length} caller ID number{options.length === 1 ? "" : "s"} available
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </Card>
-
-          <Card className="space-y-3 p-5">
+        <Card className="space-y-4 p-5">
+          <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="text-[18px] font-semibold text-slate-900 dark:text-white">
-                Supabase status
+                RingCentral connection
               </h3>
             </div>
-            <StatusRow label="Backend connected" value={settingsStatus.supabase.connected} />
-            <StatusRow
-              label="Publishable key configured"
-              value={settingsStatus.supabase.publishableKeyConfigured}
-            />
-            <StatusRow
-              label="Service role configured"
-              value={settingsStatus.supabase.serviceRoleConfigured}
-            />
-            <StatusRow
-              label="Realtime available"
-              value={settingsStatus.supabase.realtimeAvailable ?? settingsStatus.supabase.connected}
-            />
-            {settingsStatus.supabase.reason ? (
-              <div className="crm-subtle-card px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                {settingsStatus.supabase.reason}
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => refreshRingCentralStatus({ force: true })}>
+                <RotateCcw size={14} />
+                Refresh
+              </Button>
+              {ringCentralStatus.connected ? (
+                <Button variant="danger" size="sm" onClick={handleDisconnect}>
+                  Disconnect
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setRingCentralActionMessage(null);
+                    void connectRingCentral().catch((error) => {
+                      setRingCentralActionMessage(
+                        error instanceof Error ? error.message : "Unable to start RingCentral connection.",
+                      );
+                    });
+                  }}
+                >
+                  Connect RingCentral
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="crm-subtle-card px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                Status
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+                {ringCentralStatus.connected ? "Connected" : "Not connected"}
+              </p>
+            </div>
+            <div className="crm-subtle-card px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                Selected caller ID
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+                {ringCentralStatus.selectedRingOutNumber
+                  ? formatRingCentralPhoneNumber(ringCentralStatus.selectedRingOutNumber)
+                  : "RingCentral default"}
+              </p>
+            </div>
+          </div>
+
+          <div className="crm-subtle-card space-y-3 px-4 py-4">
+            <div>
+              <p className="text-sm font-medium text-slate-900 dark:text-white">
+                Outbound caller ID
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <label className="block">
+                <span className="sr-only">RingCentral caller ID number</span>
+                <select
+                  className="h-10 w-full rounded-[12px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-[#1f7db3] dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                  value={selectedRingOutNumber}
+                  onChange={(event) => setSelectedRingOutNumber(event.target.value)}
+                  disabled={!ringCentralStatus.connected}
+                >
+                  <option value="">Use RingCentral default caller ID</option>
+                  {options.map((number) => (
+                    <option key={number.phoneNumber} value={number.phoneNumber}>
+                      {number.label ?? formatRingCentralPhoneNumber(number.phoneNumber)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <Button
+                variant="secondary"
+                onClick={handleSaveRingOutNumber}
+                disabled={!canSaveRingOutNumber}
+              >
+                Save caller ID
+              </Button>
+            </div>
+
+            {ringCentralStatus.message ? (
+              <div className="crm-subtle-card px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+                {ringCentralStatus.message}
               </div>
             ) : null}
-          </Card>
 
-          <Card className="space-y-4 p-5">
-            <PasswordResetPanel mode="settings" compact />
-          </Card>
-        </div>
+            {ringCentralActionMessage ? (
+              <div className="crm-subtle-card px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+                {ringCentralActionMessage}
+              </div>
+            ) : null}
+
+            {ringCentralStatus.connectedAt ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="crm-subtle-card px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                  Connected at {new Date(ringCentralStatus.connectedAt).toLocaleString()}
+                </div>
+                <div className="crm-subtle-card px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                  {options.length} caller ID number{options.length === 1 ? "" : "s"} available
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </Card>
       </div>
     </div>
   );

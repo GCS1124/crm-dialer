@@ -47,7 +47,7 @@ import {
 import { formatDialNumberForSession } from "../lib/softphoneDialing";
 import type { LeadPriority } from "../types";
 
-type WorkspaceTab = "about" | "notes" | "history" | "timeline";
+type WorkspaceTab = "history" | "notes" | "timeline";
 
 function formatRelativeTime(value?: string | null) {
   if (!value) {
@@ -131,7 +131,11 @@ export function PreviewDialerPage() {
     queueSort,
     queueFilter,
     setQueueFilter,
+    autoDialEnabled,
+    autoDialDelaySeconds,
+    autoDialCountdown,
     setAutoDialEnabled,
+    setAutoDialDelaySeconds,
     currentLeadId,
     activeCall,
     wrapUpLeadId,
@@ -155,7 +159,7 @@ export function PreviewDialerPage() {
   const [callbackPriority, setCallbackPriority] = useState<LeadPriority>("High");
   const [callbackSaving, setCallbackSaving] = useState(false);
   const [callbackMessage, setCallbackMessage] = useState("");
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("about");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("history");
   const [heroTimer, setHeroTimer] = useState(0);
   const [queueSearch, setQueueSearch] = useState("");
   const [destinationChoice, setDestinationChoice] = useState("custom");
@@ -215,8 +219,17 @@ export function PreviewDialerPage() {
         timezone: currentUser?.timezone,
       })
     : "";
-  const canCallLead = Boolean(destinationDialNumber) && !activeCall;
+  const canCallLead = Boolean(destinationDialNumber) && !activeCall && !wrapUpLeadId;
   const isIncomingRinging = activeCall?.direction === "incoming" && activeCall?.status === "ringing";
+
+  useEffect(() => {
+    if (!autoDialEnabled) {
+      setAutoDialEnabled(true);
+    }
+    if (autoDialDelaySeconds !== 1) {
+      setAutoDialDelaySeconds(1);
+    }
+  }, [autoDialDelaySeconds, autoDialEnabled, setAutoDialDelaySeconds, setAutoDialEnabled]);
 
   useEffect(() => {
     const nextChoice = leadDestinationOptions[0]?.value ?? "custom";
@@ -311,101 +324,85 @@ export function PreviewDialerPage() {
   };
 
   if (!activeLead) {
-    const uploadFailed =
-      uploadMessage.toLowerCase().includes("unable") ||
-      uploadMessage.toLowerCase().includes("error");
-
     return (
       <EmptyState
         icon={PhoneOff}
         title="No leads available in the current queue"
-        description="Import a spreadsheet here or reset the queue filter to bring leads back into the dialer."
-        action={
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-[#2d84b5] bg-[#3b91c3] px-4 py-2.5 text-[12px] font-medium text-white transition hover:bg-[#327eab]">
-                <FileUp size={14} />
-                {uploading ? "Importing..." : "Upload CSV / Excel"}
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  onChange={handleBulkFileUpload}
-                />
-              </label>
-              {queueFilter !== "all" ? (
-                <Button
-                  size="md"
-                  variant="secondary"
-                  onClick={() => setQueueFilter("all")}
-                >
-                  Show all active
-                </Button>
-              ) : null}
-            </div>
-            <div className="w-full max-w-md">
-              <ImportTemplateCard compact />
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Accepted formats: `.csv`, `.xlsx`, `.xls`
-            </p>
-            {uploadMessage ? (
-              <p
-                className={cn(
-                  "max-w-md text-[12px]",
-                  uploadFailed
-                    ? "text-rose-700 dark:text-rose-300"
-                    : "text-emerald-700 dark:text-emerald-300",
-                )}
-              >
-                {uploadMessage}
-              </p>
-            ) : null}
-          </div>
-        }
+        description="The dialer will load the next lead automatically when one becomes available."
       />
     );
   }
+
   const workspaceTabs: Array<{
     id: WorkspaceTab;
     label: string;
     icon: LucideIcon;
   }> = [
-    { id: "about", label: "About", icon: UserRound },
     { id: "history", label: "History", icon: History },
     { id: "notes", label: "Notes", icon: StickyNote },
     { id: "timeline", label: "Timeline", icon: Clock3 },
   ];
 
-  const contactDetails = [
+  const leadStatusLabel = activeLead.status.replace("_", " ");
+  const callStatusText = wrapUpLeadId
+    ? "Disposition open"
+    : activeCall
+    ? `${activeCall.status.replace(/_/g, " ")} | ${formatDuration(heroTimer)}`
+    : autoDialEnabled && autoDialCountdown !== null
+    ? `Auto-dial in ${autoDialCountdown}s`
+    : "Ready to dial";
+  const callStatusTone = wrapUpLeadId
+    ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-300"
+    : activeCall
+    ? "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-500/30 dark:bg-cyan-950/20 dark:text-cyan-300"
+    : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300";
+  const leadHighlights = [
+    {
+      label: "Status",
+      value: leadStatusLabel,
+      tone: getLeadStatusTone(activeLead.status),
+    },
+    {
+      label: "Priority",
+      value: activeLead.priority,
+      tone: getPriorityTone(activeLead.priority),
+    },
+    {
+      label: "Queue",
+      value: `${Math.max(queuePosition, 0)} / ${queue.length || 1}`,
+    },
+    {
+      label: "Lead score",
+      value: `${activeLead.leadScore}`,
+    },
+  ];
+  const leadDetails = [
     { icon: Mail, label: "Email", value: activeLead.email || "--" },
     { icon: Phone, label: "Phone", value: formatPhone(activeLead.phone) },
-    { icon: Building2, label: "Organization", value: activeLead.company || "--" },
+    { icon: Phone, label: "Alt phone", value: activeLead.altPhone ? formatPhone(activeLead.altPhone) : "--" },
+    { icon: Building2, label: "Company", value: activeLead.company || "--" },
+    { icon: UserRound, label: "Job title", value: activeLead.jobTitle || "--" },
     { icon: MapPin, label: "Location", value: activeLead.location || "--" },
+    { icon: History, label: "Source", value: activeLead.source || "--" },
+    { icon: Clock3, label: "Assigned agent", value: activeLead.assignedAgentName || "--" },
+    { icon: Clock3, label: "Timezone", value: activeLead.timezone || "--" },
+    {
+      icon: History,
+      label: "Last contacted",
+      value: activeLead.lastContacted ? formatDateTime(activeLead.lastContacted) : "Not contacted yet",
+    },
     { icon: Clock3, label: "Created", value: formatDateTime(activeLead.createdAt) },
-    { icon: History, label: "Last updated", value: formatDateTime(activeLead.updatedAt) },
+    { icon: History, label: "Updated", value: formatDateTime(activeLead.updatedAt) },
   ];
 
   return (
-    <div className="space-y-4 text-sm">
+    <div className={cn("space-y-4 text-sm", wrapUpLeadId ? "pb-[22rem]" : "pb-4")}>
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-[#eef4fb] shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
         <div className="flex flex-wrap items-center justify-end gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
             {currentUser.avatar}
           </div>
         </div>
-
-        {uploadMessage ? (
-          <div className="border-b border-cyan-200 bg-cyan-50 px-4 py-2 text-[12px] text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-950/20 dark:text-cyan-300">
-            {uploadMessage}
-          </div>
-        ) : null}
-
-        {callbackMessage ? (
-          <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-300">
-            {callbackMessage}
-          </div>
-        ) : null}
 
         {callError ? (
           <div className="border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
@@ -417,488 +414,261 @@ export function PreviewDialerPage() {
           </div>
         ) : null}
 
-        <div className="grid xl:min-h-[calc(100vh-245px)] xl:grid-cols-[290px_minmax(0,1fr)]">
-          <aside className="border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-            <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/40">
-              <div className="flex items-center justify-between text-[12px] font-medium text-slate-700 dark:text-slate-200">
-                <span>Active</span>
-                <ChevronDown size={14} />
+        <div className="space-y-4 px-4 py-4">
+          <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 dark:border-slate-800 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#ff8f7b] text-[13px] font-semibold text-white">
+                {headerInitials}
               </div>
-              <button
-                type="button"
-                onClick={() => selectLead(activeLead.id)}
-                className="mt-3 flex w-full items-center gap-3 rounded-[4px] bg-[#4c88bc] px-4 py-3 text-left text-white"
+              <div className="min-w-0">
+                <p className="truncate text-[18px] font-semibold text-slate-900 dark:text-white">
+                  {headerName}
+                </p>
+                <p className="truncate text-[13px] text-slate-500 dark:text-slate-400">
+                  {formatPhone(headerPhone)}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                  <span>Queue {Math.max(queuePosition, 0)} / {queue.length || 1}</span>
+                  <span>|</span>
+                  <span>{activeLead.company || "No company"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                size="md"
+                onClick={() => {
+                  if (activeCall) {
+                    void endCall();
+                    return;
+                  }
+
+                  void handleCallLead();
+                }}
+                disabled={Boolean(wrapUpLeadId) || (!activeCall && !canCallLead)}
               >
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/30 text-[12px] font-semibold">
-                  {getInitials(activeLead.fullName)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold">{activeLead.fullName}</p>
-                  <p className="mt-0.5 text-[12px] text-white/85">{formatPhone(activeLead.phone)}</p>
-                </div>
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ff6d63]">
-                  <PhoneOff size={14} className="text-white" />
-                </div>
-              </button>
-            </div>
+                {activeCall ? <PhoneOff size={15} /> : <PhoneCall size={15} />}
+                {activeCall ? (isIncomingRinging ? "Reject" : "End call") : "Call"}
+              </Button>
 
-            <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-              <div className="flex items-center justify-between text-[12px] font-medium text-slate-700 dark:text-slate-200">
-                <span>Queue ({queuedLeads.length})</span>
-                <ChevronDown size={14} />
-              </div>
-              <div className="mt-3 grid gap-5">
-                <label className="relative">
-                  <Search
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    value={queueSearch}
-                    onChange={(event) => setQueueSearch(event.target.value)}
-                    placeholder="Search queue"
-                    className="crm-input py-2 pl-9 text-[12px]"
-                  />
-                </label>
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-[12px] border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
-                  <FileUp size={14} />
-                  {uploading ? "Importing..." : "Import file"}
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    className="hidden"
-                    onChange={handleBulkFileUpload}
-                  />
-                </label>
+              <div
+                className={cn(
+                  "min-w-[180px] rounded-[18px] border px-4 py-2",
+                  callStatusTone,
+                )}
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] opacity-80">
+                  Call log / status
+                </p>
+                <p className="mt-1 text-[12px] font-medium leading-5">{callStatusText}</p>
               </div>
             </div>
+          </div>
 
-            <div className="max-h-[360px] overflow-y-auto">
-              {filteredQueuedLeads.length ? (
-                filteredQueuedLeads.map((lead) => (
-                  <button
-                    key={lead.id}
-                    type="button"
-                    onClick={() => selectLead(lead.id)}
-                    className="flex w-full items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
-                  >
-                    <div className="flex min-w-0 items-start gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-[11px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
-                        {getInitials(lead.fullName)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-[13px] font-medium text-slate-900 dark:text-white">
-                          {lead.fullName}
+          <div className="grid gap-4 xl:min-h-[calc(100vh-320px)] xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+            <aside className="space-y-4">
+              <DetailSection title="Lead snapshot">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[13px] font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+                    {getInitials(activeLead.fullName)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] font-semibold text-slate-900 dark:text-white">
+                      {activeLead.fullName}
+                    </p>
+                    <p className="truncate text-[13px] text-slate-500 dark:text-slate-400">
+                      {formatPhone(activeLead.phone)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {leadHighlights.map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-950"
+                    >
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        {item.label}
+                      </p>
+                      {item.tone ? (
+                        <Badge className={cn("mt-2", item.tone)}>{item.value}</Badge>
+                      ) : (
+                        <p className="mt-2 text-[13px] font-medium text-slate-900 dark:text-white">
+                          {item.value}
                         </p>
-                        <p className="truncate text-[12px] text-slate-500 dark:text-slate-400">
-                          {formatPhone(lead.phone)}
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </DetailSection>
+
+              <DetailSection title="Contact details">
+                <div className="space-y-3">
+                  {leadDetails.map((item) => (
+                    <div key={item.label} className="flex gap-3">
+                      <div className="mt-0.5 text-slate-400 dark:text-slate-500">
+                        <item.icon size={15} />
+                      </div>
+                      <div>
+                        <p className="text-[12px] text-slate-500 dark:text-slate-400">{item.label}</p>
+                        <p className="mt-0.5 text-[13px] text-slate-900 dark:text-white">
+                          {item.value}
                         </p>
                       </div>
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      {formatRelativeTime(lead.lastContacted || lead.createdAt)}
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <div className="px-4 py-6 text-[12px] text-slate-500 dark:text-slate-400">
-                  No queued leads match this search.
+                  ))}
                 </div>
-              )}
-            </div>
+              </DetailSection>
+            </aside>
 
-            <div className="space-y-3 border-t border-slate-200 px-4 py-4 dark:border-slate-800">
-              <div className="grid grid-cols-3 gap-2">
-                <Button size="sm" variant="secondary" onClick={previousLead} disabled={Boolean(wrapUpLeadId)}>
-                  <ChevronLeft size={14} />
-                </Button>
-                <Button size="sm" variant="secondary" onClick={nextLead} disabled={Boolean(wrapUpLeadId)}>
-                  <ChevronRight size={14} />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={skipLead} disabled={Boolean(wrapUpLeadId)}>
-                  <SkipForward size={14} />
-                </Button>
-              </div>
+            <section className="min-w-0">
+              <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
+                <div className="border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-950">
+                  <div className="flex flex-wrap items-center gap-5">
+                    {workspaceTabs.map((tab) => {
+                      const Icon = tab.icon;
+                      const isActive = workspaceTab === tab.id;
 
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    setAutoDialEnabled(false);
-                    setCallbackMessage("");
-                    setCallbackPanelOpen((current) => !current);
-                    setCallbackAt(buildCallbackDraft(activeLead.callbackTime));
-                    setCallbackPriority(activeLead.priority);
-                  }}
-                  disabled={Boolean(wrapUpLeadId)}
-                >
-                  <CalendarClock size={14} />
-                  Callback
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => void markLeadInvalid()}
-                  disabled={Boolean(wrapUpLeadId)}
-                >
-                  <XCircle size={14} />
-                  Invalid
-                </Button>
-              </div>
-
-              {callbackPanelOpen ? (
-                <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
-                  <div className="grid gap-2">
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { label: "+30m", value: buildQuickCallbackInput(0.5) },
-                        { label: "+2h", value: buildQuickCallbackInput(2) },
-                        { label: "Tomorrow 9:30", value: buildQuickCallbackInput(1, 9, 30) },
-                      ].map((shortcut) => (
+                      return (
                         <button
-                          key={shortcut.label}
+                          key={tab.id}
                           type="button"
-                          onClick={() => setCallbackAt(shortcut.value)}
-                          className="rounded-md border border-slate-200 bg-white px-2 py-2 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                          onClick={() => setWorkspaceTab(tab.id)}
+                          className={cn(
+                            "inline-flex items-center gap-2 border-b-2 px-1 py-3 text-[12px] font-medium transition",
+                            isActive
+                              ? "border-surface-700 text-surface-700 dark:border-cyan-400 dark:text-cyan-300"
+                              : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
+                          )}
                         >
-                          {shortcut.label}
+                          <Icon size={14} />
+                          {tab.label}
                         </button>
-                      ))}
-                    </div>
-                    <input
-                      type="datetime-local"
-                      value={scheduleCallbackDraft}
-                      onChange={(event) => setCallbackAt(event.target.value)}
-                      className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[12px] outline-none focus:border-surface-600 dark:border-slate-700 dark:bg-slate-950"
-                    />
-                    <select
-                      value={callbackPriority}
-                      onChange={(event) => setCallbackPriority(event.target.value as LeadPriority)}
-                      className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[12px] outline-none focus:border-surface-600 dark:border-slate-700 dark:bg-slate-950"
-                    >
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                      <option value="Urgent">Urgent</option>
-                    </select>
-                    <Button
-                      size="sm"
-                      onClick={() => void handleScheduleCallback()}
-                      disabled={!scheduleCallbackDraft || callbackSaving}
-                    >
-                      {callbackSaving ? "Saving..." : "Save callback"}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </aside>
-
-          <section className="min-w-0">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
-              <div className="space-y-4">
-                <div className="rounded-[28px] border border-slate-200 bg-white px-4 py-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#ff8f7b] text-[13px] font-semibold text-white">
-                        {headerInitials}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-[16px] font-semibold text-slate-900 dark:text-white">
-                          {headerName}
-                        </p>
-                        <p className="truncate text-[13px] text-slate-500 dark:text-slate-400">
-                          {formatPhone(headerPhone)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={getLeadStatusTone(activeLead.status)}>
-                        {activeLead.status.replace("_", " ")}
-                      </Badge>
-                      <Badge className={getPriorityTone(activeLead.priority)}>{activeLead.priority}</Badge>
-                      <div className="text-[12px] text-slate-500 dark:text-slate-400">
-                        Queue {Math.max(queuePosition, 0)} / {queue.length || 1}
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
-                  <div className="border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-950">
-                    <div className="flex flex-wrap items-center gap-5">
-                      {workspaceTabs.map((tab) => {
-                        const Icon = tab.icon;
-                        const isActive = workspaceTab === tab.id;
+                <div className="space-y-4 bg-[#f5f7fc] p-4 dark:bg-slate-950">
+                  {workspaceTab === "history" ? (
+                    <DetailSection title="Call history">
+                      <div className="space-y-3">
+                        {callEntries.length ? (
+                          callEntries.map((call) => {
+                            const isFailedAttempt =
+                              call.source === "failed_attempt" || call.status === "failed";
 
-                        return (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setWorkspaceTab(tab.id)}
-                            className={cn(
-                              "inline-flex items-center gap-2 border-b-2 px-1 py-3 text-[12px] font-medium transition",
-                              isActive
-                                ? "border-surface-700 text-surface-700 dark:border-cyan-400 dark:text-cyan-300"
-                                : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
-                            )}
-                          >
-                            <Icon size={14} />
-                            {tab.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 bg-[#f5f7fc] p-4 dark:bg-slate-950">
-                    {wrapUpLeadId ? (
-                      <PostCallPanel
-                        open={Boolean(wrapUpLeadId)}
-                        leadName={activeLead.fullName}
-                        onSave={saveDisposition}
-                      />
-                    ) : null}
-
-                    {workspaceTab === "about" ? (
-                      <div className="grid gap-4">
-                        <DetailSection title="Contact details">
-                          <div className="space-y-4">
-                            {contactDetails.map((item) => (
-                              <div key={item.label} className="flex gap-3">
-                                <div className="mt-0.5 text-slate-400 dark:text-slate-500">
-                                  <item.icon size={15} />
-                                </div>
-                                <div>
-                                  <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                                    {item.label}
-                                  </p>
-                                  <p className="mt-0.5 text-[13px] text-slate-900 dark:text-white">
-                                    {item.value}
+                            return (
+                              <div
+                                key={call.id}
+                                className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge className={getDispositionTone(call.disposition)}>
+                                      {call.disposition}
+                                    </Badge>
+                                    {isFailedAttempt ? (
+                                      <Badge className="bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                                        {call.failureMessage ||
+                                          (call.failureStage
+                                            ? call.failureStage.replace(/_/g, " ")
+                                            : "Pre-connect failure")}
+                                      </Badge>
+                                    ) : null}
+                                    <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                      {formatDuration(call.durationSeconds)}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                    {formatDateTime(call.createdAt)}
                                   </p>
                                 </div>
+                                <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300">
+                                  {call.outcomeSummary || call.notes || "No summary"}
+                                </p>
+                                <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                  {call.agentName}
+                                </p>
                               </div>
-                            ))}
-                          </div>
-                        </DetailSection>
-                      </div>
-                    ) : null}
-
-                    {workspaceTab === "notes" ? (
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                        <DetailSection title="Notes history">
-                          <div className="space-y-3">
-                            {noteEntries.length ? (
-                              noteEntries.map((note) => (
-                                <div
-                                  key={note.id}
-                                  className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950"
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <p className="text-[13px] font-medium text-slate-900 dark:text-white">
-                                      {note.authorName}
-                                    </p>
-                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                      {formatDateTime(note.createdAt)}
-                                    </p>
-                                  </div>
-                                  <p className="mt-2 text-[12px] leading-5 text-slate-600 dark:text-slate-300">
-                                    {note.body}
-                                  </p>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                                No notes yet.
-                              </p>
-                            )}
-                          </div>
-                        </DetailSection>
-
-                        <DetailSection title="Summary">
-                          <p className="text-[12px] leading-6 text-slate-600 dark:text-slate-300">
-                            {activeLead.notes || "No note saved."}
+                            );
+                          })
+                        ) : (
+                          <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                            No calls yet.
                           </p>
-                        </DetailSection>
+                        )}
                       </div>
-                    ) : null}
+                    </DetailSection>
+                  ) : null}
 
-                    {workspaceTab === "history" ? (
-                      <DetailSection title="Call history">
+                  {workspaceTab === "notes" ? (
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+                      <DetailSection title="Notes history">
                         <div className="space-y-3">
-                          {callEntries.length ? (
-                            callEntries.map((call) => {
-                              const isFailedAttempt =
-                                call.source === "failed_attempt" || call.status === "failed";
-
-                              return (
-                                <div
-                                  key={call.id}
-                                  className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950"
-                                >
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <Badge className={getDispositionTone(call.disposition)}>
-                                        {call.disposition}
-                                      </Badge>
-                                      {isFailedAttempt ? (
-                                        <Badge className="bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
-                                          {call.failureMessage ||
-                                            (call.failureStage
-                                              ? call.failureStage.replace(/_/g, " ")
-                                              : "Pre-connect failure")}
-                                        </Badge>
-                                      ) : null}
-                                      <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                                        {formatDuration(call.durationSeconds)}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                      {formatDateTime(call.createdAt)}
-                                    </p>
-                                  </div>
-                                  <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300">
-                                    {call.outcomeSummary || call.notes || "No summary"}
+                          {noteEntries.length ? (
+                            noteEntries.map((note) => (
+                              <div
+                                key={note.id}
+                                className="rounded-[16px] border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-[13px] font-medium text-slate-900 dark:text-white">
+                                    {note.authorName}
                                   </p>
-                                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-                                    {call.agentName}
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                    {formatDateTime(note.createdAt)}
                                   </p>
                                 </div>
-                              );
-                            })
+                                <p className="mt-2 text-[12px] leading-5 text-slate-600 dark:text-slate-300">
+                                  {note.body}
+                                </p>
+                              </div>
+                            ))
                           ) : (
                             <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                              No calls yet.
+                              No notes yet.
                             </p>
                           )}
                         </div>
                       </DetailSection>
-                    ) : null}
 
-                    {workspaceTab === "timeline" ? (
-                      <div className="rounded-[18px] border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950">
-                        <ActivityTimeline lead={activeLead} embedded />
-                      </div>
-                    ) : null}
-                  </div>
+                      <DetailSection title="Summary">
+                        <p className="text-[12px] leading-6 text-slate-600 dark:text-slate-300">
+                          {activeLead.notes || "No note saved."}
+                        </p>
+                      </DetailSection>
+                    </div>
+                  ) : null}
+
+                  {workspaceTab === "timeline" ? (
+                    <div className="rounded-[18px] border border-slate-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-950">
+                      <ActivityTimeline lead={activeLead} embedded />
+                    </div>
+                  ) : null}
                 </div>
               </div>
-
-              <div className="space-y-4">
-                <div className="rounded-[28px] border border-slate-200 bg-white px-4 py-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                          Call controls
-                        </p>
-                        <p className="mt-1 text-[13px] font-medium text-slate-900 dark:text-white">
-                          RingCentral call workspace
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <div className="min-w-[72px] text-right">
-                          <p className="text-[16px] font-medium text-slate-800 dark:text-white">
-                            {activeCall ? formatDuration(heroTimer) : "00:00"}
-                          </p>
-                          {activeCall ? (
-                            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                              {activeCall.status.replace(/_/g, " ")}
-                            </p>
-                          ) : null}
-                        </div>
-
-                        {activeCall ? (
-                          isIncomingRinging ? (
-                            <Button size="md" variant="danger" onClick={endCall}>
-                              <PhoneOff size={15} />
-                              Reject
-                            </Button>
-                          ) : (
-                            <Button size="md" variant="danger" onClick={endCall}>
-                              <PhoneOff size={15} />
-                              End call
-                            </Button>
-                          )
-                        ) : (
-                          <Button size="md" onClick={handleCallLead} disabled={!canCallLead}>
-                            <PhoneCall size={15} />
-                            Call
-                          </Button>
-                        )}
-
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-500 transition hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                        >
-                          <MoreVertical size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_280px]">
-                      <label className="space-y-1">
-                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                          Destination number
-                        </span>
-                        <select
-                          value={destinationChoice}
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setDestinationChoice(nextValue);
-                            if (nextValue !== "custom") {
-                              setCustomDestination("");
-                            }
-                          }}
-                          className="crm-input py-2 text-[12px]"
-                        >
-                          {leadDestinationOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                          <option value="custom">Custom number</option>
-                        </select>
-                      </label>
-
-                      <div className="flex items-end">
-                        <p className="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                          {destinationChoice === "custom" && customDestinationTrimmed
-                            ? "RingCentral will dial " + formatPhone(customDestinationTrimmed) + "."
-                            : selectedDestinationOption
-                            ? "RingCentral will dial " + formatPhone(selectedDestinationOption.value) + "."
-                            : "Choose one of the lead's numbers or type a custom destination."}
-                        </p>
-                      </div>
-
-                      {destinationChoice === "custom" ? (
-                        <label className="space-y-1 xl:col-span-2">
-                          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                            Custom destination
-                          </span>
-                          <input
-                            value={customDestination}
-                            onChange={(event) => setCustomDestination(event.target.value)}
-                            placeholder="Enter destination phone number"
-                            inputMode="tel"
-                            className="crm-input py-2 text-[12px]"
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-
-                    <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                      RingCentral will dial the selected destination using your saved forwarding number.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+            </section>
+          </div>
         </div>
+
+        {wrapUpLeadId && activeLead ? (
+          <div className="fixed inset-0 z-40 bg-slate-950/15 backdrop-blur-[1px]" />
+        ) : null}
+
+        {wrapUpLeadId && activeLead ? (
+          <div className="fixed inset-x-0 bottom-0 z-50 px-4 pb-4">
+            <div className="mx-auto max-w-4xl overflow-hidden rounded-[28px] border border-cyan-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.18)] dark:border-cyan-500/30 dark:bg-slate-950">
+              <PostCallPanel
+                open={Boolean(wrapUpLeadId)}
+                leadName={activeLead.fullName}
+                onSave={saveDisposition}
+              />
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );
