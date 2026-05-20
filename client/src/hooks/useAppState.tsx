@@ -1,5 +1,6 @@
 import {
   createContext,
+  useMemo,
   useContext,
   useEffect,
   useRef,
@@ -9,11 +10,26 @@ import {
 
 import { getQueueLeads } from "../lib/analytics";
 import { apiRequest } from "../lib/api";
+import {
+  buildIncomingAlerts,
+  countUnreadIncomingAlerts,
+  loadSeenIncomingAlertIds,
+  saveSeenIncomingAlertIds,
+  type IncomingAlertItem,
+} from "../lib/incomingAlerts.ts";
 import { createRingbackToneController } from "../lib/ringbackTone";
 import type { RingbackAudioContextLike } from "../lib/ringbackTone";
 import {
   formatDialNumberForSession,
 } from "../lib/softphoneDialing";
+import {
+  checkIn as createCheckedInTimeTrackingState,
+  checkOut as createCheckedOutTimeTrackingState,
+  createInitialTimeTrackingState,
+  endBreak as createEndedBreakTimeTrackingState,
+  getDisplayedSeconds,
+  startBreak as createStartedBreakTimeTrackingState,
+} from "../lib/timeTracking.ts";
 import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
 import {
@@ -46,6 +62,7 @@ import type {
   QueueState,
   SaveDispositionInput,
   SipProfile,
+  BreakType,
   ThemeMode,
   UpdateSipProfileInput,
   UploadResult,
@@ -54,6 +71,7 @@ import type {
   WorkspaceAnalytics,
   WorkspaceSettingsStatus,
   WorkspacePayload,
+  TimeTrackingState,
 } from "../types";
 
 interface VoiceSessionResponse {
@@ -130,6 +148,29 @@ function usePersistentState<T>(key: string, fallback: T) {
       return fallback;
     }
   });
+  const fallbackRef = useRef(fallback);
+  const keyRef = useRef(key);
+
+  fallbackRef.current = fallback;
+
+  useEffect(() => {
+    if (keyRef.current === key) {
+      return;
+    }
+
+    keyRef.current = key;
+    const stored = localStorage.getItem(key);
+    if (!stored) {
+      setValue(fallbackRef.current);
+      return;
+    }
+
+    try {
+      setValue(JSON.parse(stored) as T);
+    } catch {
+      setValue(fallbackRef.current);
+    }
+  }, [key]);
 
   useEffect(() => {
     localStorage.setItem(key, JSON.stringify(value));
@@ -253,6 +294,9 @@ interface AppStateContextValue {
   autoDialEnabled: boolean;
   autoDialDelaySeconds: number;
   autoDialCountdown: number | null;
+  timeTracking: TimeTrackingState;
+  incomingAlerts: IncomingAlertItem[];
+  unseenIncomingAlertCount: number;
   login: (
     email: string,
     password: string,
@@ -276,6 +320,11 @@ interface AppStateContextValue {
   setQueueFilter: (filter: QueueFilter) => void;
   setAutoDialEnabled: (enabled: boolean) => void;
   setAutoDialDelaySeconds: (delay: number) => void;
+  checkIn: () => void;
+  checkOut: () => void;
+  startBreak: (breakType: BreakType) => void;
+  endBreak: () => void;
+  markIncomingAlertsSeen: () => void;
   selectLead: (leadId: string) => void;
   previousLead: () => void;
   nextLead: () => void;
@@ -376,6 +425,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [wrapUpLeadId, setWrapUpLeadId] = useState<string | null>(null);
   const [wrapUpDurationSeconds, setWrapUpDurationSeconds] = useState(0);
+  const timeTrackingStorageKey = currentUser
+    ? `preview-dialer-time-tracking:${currentUser.id}`
+    : "preview-dialer-time-tracking:guest";
+  const [timeTracking, setTimeTracking] = usePersistentState<TimeTrackingState>(
+    timeTrackingStorageKey,
+    createInitialTimeTrackingState(),
+  );
+  const [seenIncomingAlertIds, setSeenIncomingAlertIds] = useState<string[]>([]);
   const voiceClientRef = useRef<any>(null);
   const voiceConfigSignatureRef = useRef<string | null>(null);
   const wrapUpLeadIdRef = useRef<string | null>(null);
@@ -441,10 +498,36 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     ? getQueueLeads(leads, currentUser.role, currentUser.id, queueSort, queueFilter)
     : [];
   const queueScope = "default";
+  const incomingAlerts = useMemo(() => buildIncomingAlerts(leads), [leads]);
+  const seenIncomingAlertIdSet = useMemo(
+    () => new Set(seenIncomingAlertIds),
+    [seenIncomingAlertIds],
+  );
+  const unseenIncomingAlertCount = useMemo(
+    () => countUnreadIncomingAlerts(incomingAlerts, seenIncomingAlertIdSet),
+    [incomingAlerts, seenIncomingAlertIdSet],
+  );
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setSeenIncomingAlertIds([]);
+      return;
+    }
+
+    setSeenIncomingAlertIds([...loadSeenIncomingAlertIds(currentUser.id)]);
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    saveSeenIncomingAlertIds(currentUser.id, new Set(seenIncomingAlertIds));
+  }, [currentUser?.id, seenIncomingAlertIds]);
 
   useEffect(() => {
     if (!queueCursorHydrated) {
@@ -980,6 +1063,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setWorkspaceError(null);
     setLastWorkspaceSyncAt(null);
     setAutoDialCountdown(null);
+    setTimeTracking(createInitialTimeTrackingState());
+    setSeenIncomingAlertIds([]);
     setCurrentLeadId(null);
     setCurrentPhoneIndex(0);
     setQueueCursorHydrated(false);
@@ -1421,6 +1506,50 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const refreshWorkspace = async () => {
     await loadWorkspace(authToken, { silent: false });
+  };
+
+  const checkIn = () => {
+    if (activeCall || wrapUpLeadId) {
+      return;
+    }
+
+    setTimeTracking((current) =>
+      createCheckedInTimeTrackingState(current, new Date().toISOString()),
+    );
+  };
+
+  const checkOut = () => {
+    if (activeCall || wrapUpLeadId) {
+      return;
+    }
+
+    setTimeTracking((current) =>
+      createCheckedOutTimeTrackingState(current, new Date().toISOString()),
+    );
+  };
+
+  const startBreak = (breakType: BreakType) => {
+    if (activeCall || wrapUpLeadId) {
+      return;
+    }
+
+    setTimeTracking((current) =>
+      createStartedBreakTimeTrackingState(current, breakType, new Date().toISOString()),
+    );
+  };
+
+  const endBreak = () => {
+    setTimeTracking((current) => createEndedBreakTimeTrackingState(current, new Date().toISOString()));
+  };
+
+  const markIncomingAlertsSeen = () => {
+    setSeenIncomingAlertIds((current) => {
+      const next = new Set(current);
+      incomingAlerts.forEach((alert) => {
+        next.add(alert.id);
+      });
+      return [...next];
+    });
   };
 
   const selectLead = (leadId: string) => {
@@ -2126,6 +2255,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         autoDialEnabled,
         autoDialDelaySeconds,
         autoDialCountdown,
+        timeTracking,
+        incomingAlerts,
+        unseenIncomingAlertCount,
         login,
         continueWithGoogle,
         signup,
@@ -2137,6 +2269,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setQueueFilter,
         setAutoDialEnabled,
         setAutoDialDelaySeconds,
+        checkIn,
+        checkOut,
+        startBreak,
+        endBreak,
+        markIncomingAlertsSeen,
         selectLead,
         previousLead,
         nextLead,

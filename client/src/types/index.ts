@@ -64,6 +64,20 @@ export type CallControlStatus =
   | "on_hold"
   | "ended";
 
+export type BreakType = "freshen_up" | "lunch" | "tea" | "meeting_training";
+
+export type TimeTrackingStatus = "checked_out" | "checked_in" | "on_break";
+
+export interface TimeTrackingState {
+  status: TimeTrackingStatus;
+  checkedInAt: string | null;
+  breakStartedAt: string | null;
+  breakType: BreakType | null;
+  activeSessionSeconds: number;
+  activeBreakSeconds: number;
+  lastUpdatedAt: string | null;
+}
+
 export interface User {
   id: string;
   name: string;
