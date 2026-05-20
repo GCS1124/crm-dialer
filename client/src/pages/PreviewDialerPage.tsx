@@ -16,7 +16,6 @@ import {
   SkipForward,
   SkipBack,
   StickyNote,
-  UserRound,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
@@ -346,18 +345,13 @@ export function PreviewDialerPage() {
     { icon: Phone, label: "Phone", value: formatPhone(activeLead.phone) },
     { icon: Phone, label: "Alt phone", value: activeLead.altPhone ? formatPhone(activeLead.altPhone) : "--" },
     { icon: Building2, label: "Company", value: activeLead.company || "--" },
-    { icon: UserRound, label: "Job title", value: activeLead.jobTitle || "--" },
     { icon: MapPin, label: "Location", value: activeLead.location || "--" },
-    { icon: History, label: "Source", value: activeLead.source || "--" },
     { icon: Clock3, label: "Assigned agent", value: activeLead.assignedAgentName || "--" },
-    { icon: Clock3, label: "Timezone", value: activeLead.timezone || "--" },
     {
       icon: History,
       label: "Last contacted",
       value: activeLead.lastContacted ? formatDateTime(activeLead.lastContacted) : "Not contacted yet",
     },
-    { icon: Clock3, label: "Created", value: formatDateTime(activeLead.createdAt) },
-    { icon: History, label: "Updated", value: formatDateTime(activeLead.updatedAt) },
   ];
 
   return (
@@ -410,7 +404,7 @@ export function PreviewDialerPage() {
                 aria-label="Back to previous lead"
                 title="Back"
               >
-                <SkipBack size={16} strokeWidth={2.5} />
+                <SkipBack size={20} strokeWidth={2.5} />
               </Button>
 
               <Button
@@ -422,7 +416,7 @@ export function PreviewDialerPage() {
                 aria-label="Skip current lead"
                 title="Skip"
               >
-                <SkipForward size={16} strokeWidth={2.5} />
+                <SkipForward size={20} strokeWidth={2.5} />
               </Button>
 
               <Button

@@ -15,14 +15,11 @@ export function LeadPreviewCard({
     ["Alternate", lead.altPhone || "--"],
     ["Email", lead.email || "--"],
     ["Company", lead.company || "--"],
-    ["Job title", lead.jobTitle || "--"],
     ["Location", lead.location || "--"],
-    ["Source", lead.source || "--"],
     ["Interest", lead.interest || "--"],
     ["Assigned", lead.assignedAgentName || "--"],
     ["Last contacted", formatDateTime(lead.lastContacted)],
     ["Callback", formatDateTime(lead.callbackTime)],
-    ["Timezone", lead.timezone],
   ];
 
   const content = (
@@ -48,7 +45,7 @@ export function LeadPreviewCard({
               {lead.fullName}
             </h3>
             <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-              {lead.company || "No company"} {lead.jobTitle ? `/ ${lead.jobTitle}` : ""}
+              {lead.company || "No company"}
             </p>
           </div>
 

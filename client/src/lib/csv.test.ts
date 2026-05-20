@@ -4,9 +4,9 @@ import test from "node:test";
 import { parseLeadCsv } from "./csv";
 
 test("skips the default template notes row without counting it as invalid", () => {
-  const parsed = parseLeadCsv(`Full Name,Phone,Alt Phone,Email,Company,Job Title,Location,Source,Interest,Status
-Alice Example,+1 (555) 111-2222,,,alice@example.com,Example Co,Director,Delhi,Referral,Outbound,new
-Notes:,Phone supports E.164 (+91...) or digits; spaces/dashes are okay.,Last Contacted/Callback Time accept ISO or Excel dates.,Status must be one of the allowed values,Priority must be Low/Medium/High/Urgent,,,,,
+  const parsed = parseLeadCsv(`Full Name,Phone,Alt Phone,Email,Company,Location,Interest,Status
+Alice Example,+1 (555) 111-2222,,alice@example.com,Example Co,Delhi,Outbound,new
+Notes:,Phone supports E.164 (+91...) or digits; spaces/dashes are okay.,Alt phone is optional.,Email should be valid.,Status must be one of the allowed values.,,,
 `);
 
   assert.equal(parsed.rows.length, 1);
