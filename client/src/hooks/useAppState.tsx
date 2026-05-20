@@ -18,13 +18,12 @@ import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
 import {
   beginRingCentralConnection as beginRingCentralConnectionAction,
-  completeRingCentralConnection as completeRingCentralConnectionAction,
   placeRingOutCall as placeRingOutCallAction,
   getRingOutCallStatus as getRingOutCallStatusAction,
   endRingCentralCall as endRingCentralCallAction,
   disconnectRingCentral as disconnectRingCentralAction,
   loadRingCentralStatus as loadRingCentralStatusAction,
-  saveRingCentralCallerId as saveRingCentralCallerIdAction,
+  saveRingCentralRingOutNumber as saveRingCentralRingOutNumberAction,
   type RingCentralIntegrationStatus,
 } from "../services/ringcentral";
 import {
@@ -194,13 +193,15 @@ const emptyRingCentralStatus: RingCentralIntegrationStatus = {
   connected: false,
   accountId: null,
   extensionId: null,
-  selectedCallerId: null,
-  availableCallerIds: [],
+  selectedRingOutNumber: null,
+  availableRingOutNumbers: [],
   connectedAt: null,
   updatedAt: null,
   expiresAt: null,
   message: null,
 };
+
+const RINGCENTRAL_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const emptySettingsStatus: WorkspaceSettingsStatus = {
   authMode: "supabase",
@@ -265,6 +266,9 @@ interface AppStateContextValue {
     timezone: string;
     title: string;
   }) => Promise<{ success: boolean; message?: string }>;
+  changePassword: (
+    password: string,
+  ) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   refreshWorkspace: () => Promise<void>;
   setTheme: (theme: ThemeMode) => void;
@@ -290,10 +294,12 @@ interface AppStateContextValue {
   answerCall: () => void;
   rejectCall: () => void;
   endCall: () => void;
-  refreshRingCentralStatus: () => Promise<RingCentralIntegrationStatus | null>;
+  refreshRingCentralStatus: (
+    options?: { force?: boolean },
+  ) => Promise<RingCentralIntegrationStatus | null>;
   connectRingCentral: () => Promise<void>;
   disconnectRingCentral: () => Promise<void>;
-  setRingCentralCallerId: (callerId: string | null) => Promise<void>;
+  setRingCentralRingOutNumber: (ringOutNumber: string | null) => Promise<void>;
   saveDisposition: (input: SaveDispositionInput) => Promise<void>;
   uploadLeads: (
     records: LeadImportRecord[],
@@ -333,6 +339,10 @@ const AppStateContext = createContext<AppStateContextValue | null>(null);
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = usePersistentState<ThemeMode>("preview-dialer-theme", "light");
   const [authToken, setAuthToken] = usePersistentState<string | null>("preview-dialer-token", null);
+  const [authRefreshToken, setAuthRefreshToken] = usePersistentState<string | null>(
+    "preview-dialer-refresh-token",
+    null,
+  );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -398,8 +408,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const notifiedRingCentralActivityIdsRef = useRef<Set<string>>(new Set());
   const ringCentralActivitySeededRef = useRef(false);
   const queueStateSignatureRef = useRef<string | null>(null);
-  const ringCentralCallbackHandledRef = useRef(false);
   const ringbackToneRef = useRef<ReturnType<typeof createRingbackToneController> | null>(null);
+  const ringCentralStatusCacheRef = useRef<{
+    status: RingCentralIntegrationStatus;
+    fetchedAt: number;
+  } | null>(null);
+  const ringCentralStatusRequestRef = useRef<Promise<RingCentralIntegrationStatus | null> | null>(
+    null,
+  );
+  const ringCentralStatusRequestGenerationRef = useRef(0);
 
   if (!ringbackToneRef.current) {
     ringbackToneRef.current = createBrowserRingbackToneController();
@@ -477,33 +494,55 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     async function hydrateSession() {
       let nextToken = authToken;
+      let nextRefreshToken = authRefreshToken;
 
-      if (!nextToken && supabase) {
+      if (
+        !nextToken &&
+        supabase &&
+        typeof window !== "undefined" &&
+        window.location.pathname === "/login" &&
+        (window.location.search.includes("code=") ||
+          window.location.hash.includes("access_token=") ||
+          window.location.hash.includes("refresh_token="))
+      ) {
         const sessionResult = await supabase.auth.getSession();
         nextToken = sessionResult.data.session?.access_token ?? null;
+        nextRefreshToken = sessionResult.data.session?.refresh_token ?? null;
       }
 
-      if (!nextToken) {
+      if (!nextToken || !nextRefreshToken) {
         if (active) {
-          setCurrentUser(null);
-          setUsers([]);
-          setLeads([]);
-          setAnalytics(emptyAnalytics);
-          setSettingsStatus(emptySettingsStatus);
-          setVoiceConfig(emptyVoiceConfig);
-          setRingCentralStatus(emptyRingCentralStatus);
-          setSipProfiles([]);
-          setActiveSipProfile(null);
-          setSipProfileSelectionRequired(false);
-          setCallError(null);
-          setWorkspaceError(null);
-          setLastWorkspaceSyncAt(null);
+          if (nextToken || nextRefreshToken) {
+            cleanupSession();
+          } else {
+            setCurrentUser(null);
+            setUsers([]);
+            setLeads([]);
+            setAnalytics(emptyAnalytics);
+            setSettingsStatus(emptySettingsStatus);
+            setVoiceConfig(emptyVoiceConfig);
+            setRingCentralStatus(emptyRingCentralStatus);
+            setSipProfiles([]);
+            setActiveSipProfile(null);
+            setSipProfileSelectionRequired(false);
+            setCallError(null);
+            setWorkspaceError(null);
+            setLastWorkspaceSyncAt(null);
+          }
           setSessionReady(true);
         }
         return;
       }
 
       try {
+        const { error: sessionError } = await supabase!.auth.setSession({
+          access_token: nextToken,
+          refresh_token: nextRefreshToken,
+        });
+        if (sessionError) {
+          throw sessionError;
+        }
+
         const payload = await apiRequest<{ user: User }>("/auth/me", {
           token: nextToken,
         });
@@ -515,12 +554,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (!authToken && nextToken) {
           setAuthToken(nextToken);
         }
-        setCurrentUser(payload.user);
-        await loadWorkspace(nextToken, { silent: true });
-      } catch {
-        if (!authToken) {
-          await supabase?.auth.signOut();
+        if (!authRefreshToken && nextRefreshToken) {
+          setAuthRefreshToken(nextRefreshToken);
         }
+        setCurrentUser(payload.user);
+        if (!payload.user.mustResetPassword) {
+          await loadWorkspace(nextToken, { silent: true });
+        }
+      } catch {
         if (active) {
           cleanupSession();
         }
@@ -536,67 +577,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [authToken]);
-
-  useEffect(() => {
-    if (!authToken || !currentUser || ringCentralCallbackHandledRef.current || typeof window === "undefined") {
-      return;
-    }
-
-    const searchParams = new URLSearchParams(window.location.search);
-    const code = searchParams.get("code");
-    const state = searchParams.get("state");
-    if (!code || !state) {
-      return;
-    }
-    const authorizationCode = code;
-    const authorizationState = state;
-
-    ringCentralCallbackHandledRef.current = true;
-    let active = true;
-
-    async function completeCallback() {
-      try {
-        const status = await completeRingCentralConnectionAction({
-          code: authorizationCode,
-          state: authorizationState,
-        });
-        if (!active) {
-          return;
-        }
-
-        setRingCentralStatus(status);
-        setWorkspaceError(null);
-        const nextUrl = new URL(window.location.href);
-        nextUrl.searchParams.delete("code");
-        nextUrl.searchParams.delete("state");
-        nextUrl.searchParams.delete("error");
-        nextUrl.searchParams.delete("error_description");
-        window.history.replaceState({}, document.title, `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
-        await refreshRingCentralStatus();
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-
-        setWorkspaceError(
-          error instanceof Error ? error.message : "Unable to finish the RingCentral connection.",
-        );
-        const nextUrl = new URL(window.location.href);
-        nextUrl.searchParams.delete("code");
-        nextUrl.searchParams.delete("state");
-        nextUrl.searchParams.delete("error");
-        nextUrl.searchParams.delete("error_description");
-        window.history.replaceState({}, document.title, `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
-      }
-    }
-
-    void completeCallback();
-
-    return () => {
-      active = false;
-    };
-  }, [authToken, currentUser?.id]);
+  }, [authRefreshToken, authToken]);
 
   useEffect(() => {
     return () => {
@@ -683,7 +664,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [currentLeadId]);
 
   useEffect(() => {
-    if (!authToken) {
+    if (!authToken || currentUser?.mustResetPassword) {
       return;
     }
 
@@ -692,11 +673,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [authToken]);
+  }, [authToken, currentUser?.mustResetPassword]);
 
   useEffect(() => {
     if (
       !authToken ||
+      currentUser?.mustResetPassword ||
       settingsStatus.authMode !== "supabase" ||
       !settingsStatus.supabase.connected ||
       !supabase
@@ -723,7 +705,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabaseClient.removeChannel(channel);
     };
-  }, [authToken, currentUser?.id, settingsStatus.authMode, settingsStatus.supabase.connected]);
+  }, [authToken, currentUser?.id, currentUser?.mustResetPassword, settingsStatus.authMode, settingsStatus.supabase.connected]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -804,10 +786,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   async function loadWorkspace(
     tokenOverride?: string | null,
-    options: { silent?: boolean } = {},
+    options: { silent?: boolean; ignorePasswordReset?: boolean } = {},
   ) {
     const token = tokenOverride ?? authToken;
     if (!token) {
+      return false;
+    }
+
+    if (!options.ignorePasswordReset && currentUser?.mustResetPassword) {
       return false;
     }
 
@@ -842,20 +828,64 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function refreshRingCentralStatus() {
-    try {
-      const status = await loadRingCentralStatusAction();
-      setRingCentralStatus(status);
-      return status;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to load RingCentral settings.";
-      setRingCentralStatus((existing) => ({
-        ...existing,
-        connected: false,
-        message,
-      }));
-      return null;
+  async function refreshRingCentralStatus(options: { force?: boolean } = {}) {
+    const cached = ringCentralStatusCacheRef.current;
+    const now = Date.now();
+    if (!options.force && cached && now - cached.fetchedAt < RINGCENTRAL_STATUS_CACHE_TTL_MS) {
+      setRingCentralStatus(cached.status);
+      return cached.status;
     }
+
+    if (!options.force && ringCentralStatusRequestRef.current) {
+      return ringCentralStatusRequestRef.current;
+    }
+
+    const requestGeneration = ringCentralStatusRequestGenerationRef.current + 1;
+    ringCentralStatusRequestGenerationRef.current = requestGeneration;
+    const request = loadRingCentralStatusAction()
+      .then((status) => {
+        if (ringCentralStatusRequestGenerationRef.current === requestGeneration) {
+          ringCentralStatusCacheRef.current = { status, fetchedAt: Date.now() };
+          setRingCentralStatus(status);
+        }
+        return status;
+      })
+      .catch((error) => {
+        if (ringCentralStatusRequestGenerationRef.current === requestGeneration) {
+          const message =
+            error instanceof Error ? error.message : "Unable to load RingCentral settings.";
+          setRingCentralStatus((existing) => ({
+            ...existing,
+            connected: false,
+            message,
+          }));
+        }
+        return null;
+      })
+      .finally(() => {
+        if (ringCentralStatusRequestRef.current === request) {
+          ringCentralStatusRequestRef.current = null;
+        }
+      });
+
+    if (!options.force) {
+      ringCentralStatusRequestRef.current = request;
+    }
+
+    return request;
+  }
+
+  function cacheRingCentralStatus(status: RingCentralIntegrationStatus) {
+    ringCentralStatusRequestGenerationRef.current += 1;
+    ringCentralStatusCacheRef.current = { status, fetchedAt: Date.now() };
+    ringCentralStatusRequestRef.current = null;
+    setRingCentralStatus(status);
+  }
+
+  function invalidateRingCentralStatusCache() {
+    ringCentralStatusRequestGenerationRef.current += 1;
+    ringCentralStatusCacheRef.current = null;
+    ringCentralStatusRequestRef.current = null;
   }
 
   async function syncQueueCursorFromServer(tokenOverride?: string | null) {
@@ -933,7 +963,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   function cleanupSession() {
     stopRingbackTone();
+    invalidateRingCentralStatusCache();
     setAuthToken(null);
+    setAuthRefreshToken(null);
     setCurrentUser(null);
     setUsers([]);
     setLeads([]);
@@ -942,8 +974,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setVoiceConfig(emptyVoiceConfig);
     setRingCentralStatus(emptyRingCentralStatus);
     setSipProfiles([]);
-      setActiveSipProfile(null);
-      setSipProfileSelectionRequired(false);
+    setActiveSipProfile(null);
+    setSipProfileSelectionRequired(false);
     setCallError(null);
     setWorkspaceError(null);
     setLastWorkspaceSyncAt(null);
@@ -957,7 +989,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     wrapUpLeadIdRef.current = null;
     lastAutoDialLeadIdRef.current = null;
     queueStateSignatureRef.current = null;
-    ringCentralCallbackHandledRef.current = false;
     clearCallStatusPoll();
     if (autoDialTimerRef.current) {
       window.clearInterval(autoDialTimerRef.current);
@@ -1246,11 +1277,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           message: payload.message ?? "Supabase session could not be established.",
         };
       }
+      if (!payload.refreshToken) {
+        return {
+          success: false,
+          message: "Supabase session is missing a refresh token.",
+        };
+      }
 
       setAuthToken(payload.token);
+      setAuthRefreshToken(payload.refreshToken);
       setCurrentUser(payload.user);
       setWorkspaceError(null);
-      await loadWorkspace(payload.token, { silent: true });
+      if (!payload.user.mustResetPassword) {
+        await loadWorkspace(payload.token, { silent: true });
+      }
       setSessionReady(true);
 
       return { success: true };
@@ -1319,11 +1359,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           message: payload.message ?? "Account created, but sign-in is still required.",
         };
       }
+      if (!payload.refreshToken) {
+        return {
+          success: false,
+          message: "Supabase session is missing a refresh token.",
+        };
+      }
 
       setAuthToken(payload.token);
+      setAuthRefreshToken(payload.refreshToken);
       setCurrentUser(payload.user);
       setWorkspaceError(null);
-      await loadWorkspace(payload.token, { silent: true });
+      if (!payload.user.mustResetPassword) {
+        await loadWorkspace(payload.token, { silent: true });
+      }
       setSessionReady(true);
 
       return { success: true };
@@ -1335,8 +1384,43 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const changePassword = async (password: string) => {
+    try {
+      if (!authToken) {
+        return {
+          success: false,
+          message: "Missing session.",
+        };
+      }
+
+      const payload = await apiRequest<{ user: User; message?: string }>("/auth/change-password", {
+        method: "POST",
+        token: authToken,
+        body: JSON.stringify({ newPassword: password }),
+      });
+
+      if (!payload.user) {
+        return {
+          success: false,
+          message: payload.message ?? "Unable to update your password.",
+        };
+      }
+
+      setCurrentUser(payload.user);
+      setWorkspaceError(null);
+      await loadWorkspace(authToken, { silent: true, ignorePasswordReset: true });
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Unable to update your password.",
+      };
+    }
+  };
+
   const refreshWorkspace = async () => {
-    await loadWorkspace(undefined, { silent: false });
+    await loadWorkspace(authToken, { silent: false });
   };
 
   const selectLead = (leadId: string) => {
@@ -1521,9 +1605,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     try {
       const response = await placeRingOutCallAction({
         to: outboundDialNumber,
-        callerId: ringCentralStatus.selectedCallerId,
         playPrompt: false,
-        useDiscoveredRingOutFrom: true,
       });
 
       const ringOutId = response.id?.trim() || null;
@@ -1914,7 +1996,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     const status = await beginRingCentralConnectionAction();
-    setRingCentralStatus(status);
+    cacheRingCentralStatus(status);
   };
 
   const disconnectRingCentral = async () => {
@@ -1923,16 +2005,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     await disconnectRingCentralAction();
+    invalidateRingCentralStatusCache();
     setRingCentralStatus(emptyRingCentralStatus);
   };
 
-  const setRingCentralCallerId = async (callerId: string | null) => {
+  const setRingCentralRingOutNumber = async (ringOutNumber: string | null) => {
     if (!authToken) {
       throw new Error("Missing session");
     }
 
-    const status = await saveRingCentralCallerIdAction(callerId);
-    setRingCentralStatus(status);
+    const status = await saveRingCentralRingOutNumberAction(ringOutNumber);
+    cacheRingCentralStatus(status);
   };
 
   const activateSipProfile = async (profileId: string) => {
@@ -2046,6 +2129,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         login,
         continueWithGoogle,
         signup,
+        changePassword,
         logout,
         refreshWorkspace,
         setTheme,
@@ -2068,7 +2152,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         refreshRingCentralStatus,
         connectRingCentral,
         disconnectRingCentral,
-        setRingCentralCallerId,
+        setRingCentralRingOutNumber,
         saveDisposition,
         uploadLeads,
         assignLead,

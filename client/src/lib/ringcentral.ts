@@ -5,7 +5,9 @@ export interface RingCentralPhoneNumber {
   phoneNumber: string;
   features?: string[];
   usageType?: string | null;
+  type?: string | null;
   label?: string | null;
+  enabled?: boolean;
 }
 
 export interface RingOutRequestPayload {
@@ -51,6 +53,21 @@ function formatE164PhoneNumber(value: string) {
   return value.trim();
 }
 
+function formatRingOutFromPhoneNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed.includes("*")) {
+    return formatE164PhoneNumber(trimmed);
+  }
+
+  const [base, ...rest] = trimmed.split("*");
+  const extensionSuffix = rest.join("*").trim();
+  if (!extensionSuffix) {
+    return formatE164PhoneNumber(base);
+  }
+
+  return `${formatE164PhoneNumber(base)}*${extensionSuffix}`;
+}
+
 const RINGCENTRAL_CALLER_ID_USAGE_TYPES = new Set([
   "MainCompanyNumber",
   "AdditionalCompanyNumber",
@@ -58,9 +75,20 @@ const RINGCENTRAL_CALLER_ID_USAGE_TYPES = new Set([
   "DirectNumber",
 ]);
 
+const RINGCENTRAL_RINGOUT_FROM_TYPES = new Set([
+  "PhoneLine",
+  "Mobile",
+  "Work",
+  "Other",
+  "VoiceFax",
+]);
+
 const RINGCENTRAL_RINGOUT_FROM_USAGE_TYPES = new Set([
   "ForwardedNumber",
   "DirectNumber",
+  "MainCompanyNumber",
+  "AdditionalCompanyNumber",
+  "CompanyNumber",
 ]);
 
 export function isRingCentralOutboundNumber(value: RingCentralPhoneNumber) {
@@ -69,6 +97,10 @@ export function isRingCentralOutboundNumber(value: RingCentralPhoneNumber) {
 
 export function isRingCentralCallerIdNumber(value: RingCentralPhoneNumber) {
   if (!value.phoneNumber) {
+    return false;
+  }
+
+  if (value.enabled === false) {
     return false;
   }
 
@@ -85,12 +117,19 @@ export function isRingCentralRingOutFromNumber(value: RingCentralPhoneNumber) {
     return false;
   }
 
+  if (value.enabled === false) {
+    return false;
+  }
+
   const features = value.features ?? [];
-  if (features.includes("CallForwarding")) {
+  if (features.includes("CallForwarding") || features.includes("CallFlip")) {
     return true;
   }
 
-  return RINGCENTRAL_RINGOUT_FROM_USAGE_TYPES.has(value.usageType ?? "");
+  return (
+    RINGCENTRAL_RINGOUT_FROM_TYPES.has(value.type ?? "") ||
+    RINGCENTRAL_RINGOUT_FROM_USAGE_TYPES.has(value.usageType ?? "")
+  );
 }
 
 export function formatRingCentralPhoneNumber(value: string) {
@@ -149,7 +188,7 @@ export async function createRingCentralPkcePair() {
 export function buildRingOutRequestPayload(input: {
   to: string;
   fromNumber?: string | null;
-  callerId?: string | null;
+  callerIdNumber?: string | null;
   playPrompt?: boolean;
 }): RingOutRequestPayload {
   const payload: RingOutRequestPayload = {
@@ -160,44 +199,20 @@ export function buildRingOutRequestPayload(input: {
   };
 
   const normalizedFromNumber = input.fromNumber ? normalizePhoneNumber(input.fromNumber) : "";
-  if (normalizedFromNumber) {
+  if (normalizedFromNumber || (input.fromNumber?.includes("*") ?? false)) {
     payload.from = {
-      phoneNumber: formatE164PhoneNumber(normalizedFromNumber),
+      phoneNumber: formatRingOutFromPhoneNumber(input.fromNumber ?? ""),
     };
   }
 
-  const normalizedCallerId = input.callerId ? normalizePhoneNumber(input.callerId) : "";
-  if (normalizedCallerId) {
+  const normalizedCallerIdNumber = input.callerIdNumber ? normalizePhoneNumber(input.callerIdNumber) : "";
+  if (normalizedCallerIdNumber) {
     payload.callerId = {
-      phoneNumber: formatE164PhoneNumber(normalizedCallerId),
+      phoneNumber: formatE164PhoneNumber(normalizedCallerIdNumber),
     };
   }
 
   return payload;
-}
-
-export function selectRingCentralCallerId(
-  numbers: RingCentralPhoneNumber[],
-  preferredCallerId: string | null,
-) {
-  const normalizedPreferred = preferredCallerId ? normalizePhoneNumber(preferredCallerId) : "";
-  if (normalizedPreferred) {
-    const preferredMatch = numbers.find(
-      (number) =>
-        normalizePhoneNumber(number.phoneNumber) === normalizedPreferred &&
-        isRingCentralCallerIdNumber(number),
-    );
-    if (preferredMatch) {
-      return normalizePhoneNumber(preferredMatch.phoneNumber);
-    }
-  }
-
-  const firstCallerId = numbers.find(isRingCentralCallerIdNumber);
-  if (firstCallerId) {
-    return normalizePhoneNumber(firstCallerId.phoneNumber);
-  }
-
-  return "";
 }
 
 export function selectRingCentralRingOutFromNumber(

@@ -10,6 +10,7 @@ create table if not exists public.app_users (
   title text,
   timezone text not null default 'UTC',
   status text not null default 'offline' check (status in ('online', 'away', 'offline')),
+  must_reset_password boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

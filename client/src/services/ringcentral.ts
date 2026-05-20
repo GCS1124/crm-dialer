@@ -1,8 +1,6 @@
 import { getSupabaseClient } from "../lib/supabase";
 import {
-  buildRingCentralAuthorizationUrl,
-  createRingCentralPkcePair,
-  selectRingCentralCallerId,
+  selectRingCentralRingOutFromNumber,
   type RingCentralPhoneNumber,
 } from "../lib/ringcentral";
 
@@ -10,8 +8,8 @@ export interface RingCentralIntegrationStatus {
   connected: boolean;
   accountId: string | null;
   extensionId: string | null;
-  selectedCallerId: string | null;
-  availableCallerIds: RingCentralPhoneNumber[];
+  selectedRingOutNumber: string | null;
+  availableRingOutNumbers: RingCentralPhoneNumber[];
   connectedAt: string | null;
   updatedAt: string | null;
   expiresAt: string | null;
@@ -26,38 +24,6 @@ export interface RingCentralRingOutResult {
   calleeStatus: string | null;
   to: string | null;
   from: string | null;
-  callerId: string | null;
-}
-
-const RINGCENTRAL_STATE_PREFIX = "preview-dialer-ringcentral-pkce:";
-
-function requireWindow() {
-  if (typeof window === "undefined") {
-    throw new Error("RingCentral connection is only available in the browser.");
-  }
-
-  return window;
-}
-
-function generateState() {
-  const cryptoObject = globalThis.crypto;
-  if (cryptoObject?.randomUUID) {
-    return cryptoObject.randomUUID();
-  }
-
-  return `ringcentral-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-}
-
-function saveVerifier(state: string, verifier: string) {
-  requireWindow().localStorage.setItem(`${RINGCENTRAL_STATE_PREFIX}${state}`, verifier);
-}
-
-function loadVerifier(state: string) {
-  return requireWindow().localStorage.getItem(`${RINGCENTRAL_STATE_PREFIX}${state}`);
-}
-
-function clearVerifier(state: string) {
-  requireWindow().localStorage.removeItem(`${RINGCENTRAL_STATE_PREFIX}${state}`);
 }
 
 async function invokeRingCentralFunction<T>(body: Record<string, unknown>, functionName = "ringcentral") {
@@ -130,10 +96,6 @@ async function getRingCentralFunctionErrorMessage(error: unknown) {
   return "Unable to reach RingCentral settings.";
 }
 
-function getDefaultRedirectUri() {
-  return requireWindow().location.origin.replace(/\/+$/, "");
-}
-
 function normalizeRingCentralNumbers(numbers: RingCentralPhoneNumber[]) {
   return numbers.map((number) => ({
     ...number,
@@ -148,32 +110,8 @@ export async function beginRingCentralConnection() {
 
   return {
     ...response.status,
-    availableCallerIds: normalizeRingCentralNumbers(response.status.availableCallerIds ?? []),
+    availableRingOutNumbers: normalizeRingCentralNumbers(response.status.availableRingOutNumbers ?? []),
   };
-}
-
-export async function completeRingCentralConnection(input: {
-  code: string;
-  state: string;
-}) {
-  const verifier = loadVerifier(input.state);
-  if (!verifier) {
-    throw new Error("RingCentral login expired. Try connecting again.");
-  }
-
-  try {
-    const response = await invokeRingCentralFunction<{ status: RingCentralIntegrationStatus }>({
-      action: "exchange",
-      code: input.code,
-      codeVerifier: verifier,
-      redirectUri: getDefaultRedirectUri(),
-      state: input.state,
-    });
-
-    return response.status;
-  } finally {
-    clearVerifier(input.state);
-  }
 }
 
 export async function loadRingCentralStatus() {
@@ -183,19 +121,19 @@ export async function loadRingCentralStatus() {
 
   return {
     ...response.status,
-    availableCallerIds: normalizeRingCentralNumbers(response.status.availableCallerIds ?? []),
+    availableRingOutNumbers: normalizeRingCentralNumbers(response.status.availableRingOutNumbers ?? []),
   };
 }
 
-export async function saveRingCentralCallerId(callerId: string | null) {
+export async function saveRingCentralRingOutNumber(ringOutNumber: string | null) {
   const response = await invokeRingCentralFunction<{ status: RingCentralIntegrationStatus }>({
-    action: "update-caller-id",
-    callerId,
+    action: "update-ringout-number",
+    ringOutNumber,
   });
 
   return {
     ...response.status,
-    availableCallerIds: normalizeRingCentralNumbers(response.status.availableCallerIds ?? []),
+    availableRingOutNumbers: normalizeRingCentralNumbers(response.status.availableRingOutNumbers ?? []),
   };
 }
 
@@ -207,19 +145,13 @@ export async function disconnectRingCentral() {
 
 export async function placeRingOutCall(input: {
   to: string;
-  callerId?: string | null;
   playPrompt?: boolean;
-  useDiscoveredRingOutFrom?: boolean;
 }) {
   const payload: Record<string, unknown> = {
     action: "ring-out",
     to: input.to.trim(),
     playPrompt: input.playPrompt ?? false,
-    useDiscoveredRingOutFrom: input.useDiscoveredRingOutFrom ?? false,
   };
-  if (input.callerId) {
-    payload.callerId = input.callerId;
-  }
 
   const response = await invokeRingCentralFunction<{ call: RingCentralRingOutResult }>(payload);
 
@@ -250,23 +182,9 @@ export async function endRingCentralCall(input: { ringOutId: string; connected: 
   }, "ringcentral-live");
 }
 
-export function chooseRingCentralCallerId(
+export function chooseRingCentralRingOutNumber(
   numbers: RingCentralPhoneNumber[],
-  preferredCallerId: string | null,
+  preferredRingOutNumber: string | null,
 ) {
-  return selectRingCentralCallerId(numbers, preferredCallerId);
-}
-
-export function buildRingCentralAuthRedirect() {
-  return getDefaultRedirectUri();
-}
-
-export function buildRingCentralAuthorizationRedirectUrl(input: {
-  clientId: string;
-  redirectUri: string;
-  codeChallenge: string;
-  state: string;
-  serverUrl?: string;
-}) {
-  return buildRingCentralAuthorizationUrl(input);
+  return selectRingCentralRingOutFromNumber(numbers, preferredRingOutNumber);
 }

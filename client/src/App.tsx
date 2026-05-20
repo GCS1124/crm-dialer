@@ -1,9 +1,10 @@
 import { lazy, Suspense, type ReactNode } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import { AppShell } from "./components/layout/AppShell";
 import { useAppState } from "./hooks/useAppState";
+import type { User } from "./types";
 
 const LoginPage = lazy(() =>
   import("./pages/LoginPage").then((module) => ({ default: module.LoginPage })),
@@ -41,6 +42,11 @@ const ReportsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })),
 );
+const ResetPasswordPage = lazy(() =>
+  import("./pages/ResetPasswordPage").then((module) => ({
+    default: module.ResetPasswordPage,
+  })),
+);
 const NotFoundPage = lazy(() =>
   import("./pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })),
 );
@@ -59,13 +65,26 @@ function LazyPage({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
 }
 
+function getSignedInRoute(currentUser: User | null) {
+  if (!currentUser) {
+    return "/login";
+  }
+
+  return currentUser.mustResetPassword ? "/reset-password" : "/dashboard";
+}
+
 function ProtectedRoute() {
   const { currentUser, sessionReady } = useAppState();
+  const location = useLocation();
   if (!sessionReady) {
     return <LoadingScreen />;
   }
   if (!currentUser) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (currentUser.mustResetPassword && location.pathname !== "/reset-password") {
+    return <Navigate to="/reset-password" replace />;
   }
 
   return <AppShell />;
@@ -118,7 +137,7 @@ export default function App() {
           path="/login"
           element={
             currentUser ? (
-              <Navigate to="/dashboard" replace />
+              <Navigate to={getSignedInRoute(currentUser)} replace />
             ) : (
               <LazyPage>
                 <LoginPage />
@@ -129,7 +148,23 @@ export default function App() {
         <Route
           path="/signup"
           element={
-            <Navigate to={currentUser ? "/dashboard" : "/login"} replace />
+            <Navigate to={getSignedInRoute(currentUser)} replace />
+          }
+        />
+        <Route
+          path="/reset-password"
+          element={
+            currentUser ? (
+              currentUser.mustResetPassword ? (
+                <LazyPage>
+                  <ResetPasswordPage />
+                </LazyPage>
+              ) : (
+                <Navigate to="/dashboard" replace />
+              )
+            ) : (
+              <Navigate to="/login" replace />
+            )
           }
         />
         <Route element={<ProtectedRoute />}>

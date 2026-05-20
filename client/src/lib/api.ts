@@ -1,5 +1,10 @@
-import { getSupabaseClient, hasSupabaseBrowserConfig } from "./supabase";
-import { getSessionAccessToken, getSessionUser, signInWithPassword, signUpWithPassword } from "../services/auth";
+import { hasSupabaseBrowserConfig } from "./supabase";
+import {
+  getSessionUser,
+  signInWithPassword,
+  signUpWithPassword,
+  updatePassword,
+} from "../services/auth";
 import {
   activateSipProfile,
   assignLead,
@@ -112,8 +117,8 @@ export function buildApiUrl(path: string) {
   return path;
 }
 
-async function requireSessionUser() {
-  const user = await getSessionUser();
+async function requireSessionUser(accessToken?: string | null) {
+  const user = await getSessionUser(accessToken ?? null);
   if (!user) {
     throw new ApiError("Missing session context", { status: 401 });
   }
@@ -143,10 +148,6 @@ function toQueueFilter(value: string | null): QueueFilter {
   return "all";
 }
 
-function readAuthResponseUser(value: unknown) {
-  return value && typeof value === "object" && "id" in value ? (value as User) : null;
-}
-
 export async function apiRequest<T>(path: string, options: RequestOptions = {}) {
   void (options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const route = parseRoute(path);
@@ -156,28 +157,25 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
 
   try {
     if (pathname === "/auth/me" && method === "GET") {
-      return { user: await requireSessionUser() } as T;
+      return { user: await requireSessionUser(options.token ?? null) } as T;
     }
 
     if (pathname === "/auth/login" && method === "POST") {
       const email = readString(body.email);
       const password = readString(body.password);
-      const user = await signInWithPassword(email, password);
-      if (!user) {
+      const result = await signInWithPassword(email, password);
+      if (!result.user) {
         throw new ApiError("Unable to establish a Supabase session.", { status: 401 });
       }
-
-      const client = getSupabaseClient();
-      const { data } = await client.auth.getSession();
       return {
-        token: data.session?.access_token ?? null,
-        refreshToken: data.session?.refresh_token ?? null,
-        user,
+        token: result.token,
+        refreshToken: result.refreshToken,
+        user: result.user,
       } as T;
     }
 
     if (pathname === "/auth/signup" && method === "POST") {
-      const user = await signUpWithPassword({
+      const result = await signUpWithPassword({
         name: readString(body.name),
         email: readString(body.email),
         password: readString(body.password),
@@ -185,15 +183,23 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
         timezone: readString(body.timezone),
         title: readString(body.title),
       });
-
-      const client = getSupabaseClient();
-      const { data } = await client.auth.getSession();
       return {
-        token: data.session?.access_token ?? null,
-        refreshToken: data.session?.refresh_token ?? null,
-        user: user ?? readAuthResponseUser(data.session?.user) ?? null,
-        message: data.session ? undefined : "Account created, but sign-in is still required.",
+        token: result.token,
+        refreshToken: result.refreshToken,
+        user: result.user ?? null,
+        message: result.token ? undefined : "Account created, but sign-in is still required.",
       } as T;
+    }
+
+    if (pathname === "/auth/change-password" && method === "POST") {
+      await requireSessionUser(null);
+      const newPassword = readString(body.newPassword);
+      if (!newPassword) {
+        throw new ApiError("New password is required.", { status: 400 });
+      }
+
+      const result = await updatePassword(newPassword);
+      return { user: result.user } as T;
     }
 
     if (pathname === "/workspace" && method === "GET") {

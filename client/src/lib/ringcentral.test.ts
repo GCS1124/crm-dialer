@@ -6,7 +6,7 @@ import {
   buildRingOutRequestPayload,
   getRingOutProgressState,
   isRingCentralOutboundNumber,
-  selectRingCentralCallerId,
+  isRingCentralRingOutFromNumber,
   selectRingCentralRingOutFromNumber,
 } from "./ringcentral";
 
@@ -29,27 +29,12 @@ test("builds the RingCentral PKCE authorization url", () => {
   assert.equal(parsed.searchParams.get("code_challenge_method"), "S256");
 });
 
-test("builds a RingOut payload with the selected caller id", () => {
-  assert.deepEqual(
-    buildRingOutRequestPayload({
-      to: "+1 (952) 840-9189",
-      callerId: "+1 (555) 111-2222",
-      playPrompt: false,
-    }),
-    {
-      callerId: { phoneNumber: "+15551112222" },
-      to: { phoneNumber: "+19528409189" },
-      playPrompt: false,
-    },
-  );
-});
-
-test("builds a RingOut payload with separate from and caller id numbers", () => {
+test("builds a RingOut payload with a forwarding number", () => {
   assert.deepEqual(
     buildRingOutRequestPayload({
       to: "+1 (952) 840-9189",
       fromNumber: "+1 (702) 749-4172",
-      callerId: "+1 (877) 578-7788",
+      callerIdNumber: "+1 (877) 578-7788",
       playPrompt: false,
     }),
     {
@@ -61,62 +46,24 @@ test("builds a RingOut payload with separate from and caller id numbers", () => 
   );
 });
 
-test("builds a RingOut payload without a caller id when omitted", () => {
+test("preserves an app-only RingOut extension target", () => {
   assert.deepEqual(
     buildRingOutRequestPayload({
-      to: "+1 (952) 840-9189",
-      playPrompt: true,
+      to: "+1 (732) 593-9636",
+      fromNumber: "+1 (877) 578-7788*101",
+      callerIdNumber: "+1 (877) 578-7788",
+      playPrompt: false,
     }),
     {
-      to: { phoneNumber: "+19528409189" },
-      playPrompt: true,
+      from: { phoneNumber: "+18775787788*101" },
+      callerId: { phoneNumber: "+18775787788" },
+      to: { phoneNumber: "+17325939636" },
+      playPrompt: false,
     },
   );
 });
 
-test("uses the first caller-id number when no preferred caller id is selected", () => {
-  const callerId = selectRingCentralCallerId(
-    [
-      { phoneNumber: "18005550123", features: ["CallerId"] },
-      { phoneNumber: "18005550124", features: ["CallForwarding"], usageType: "ForwardedNumber" },
-    ],
-    null,
-  );
-
-  assert.equal(callerId, "18005550123");
-});
-
-test("prefers a selected caller-id number over a forwarding number", () => {
-  const callerId = selectRingCentralCallerId(
-    [
-      { phoneNumber: "18005550123", features: ["CallerId"] },
-      { phoneNumber: "18005550124", features: ["CallForwarding"], usageType: "ForwardedNumber" },
-    ],
-    "18005550123",
-  );
-
-  assert.equal(callerId, "18005550123");
-});
-
-test("uses main company numbers as caller IDs", () => {
-  const callerId = selectRingCentralCallerId(
-    [{ phoneNumber: "18005550123", features: ["CallerId"], usageType: "MainCompanyNumber" }],
-    null,
-  );
-
-  assert.equal(callerId, "18005550123");
-});
-
-test("does not use caller-id-only numbers as RingOut from numbers", () => {
-  const fromNumber = selectRingCentralRingOutFromNumber(
-    [{ phoneNumber: "18005550123", features: ["CallerId"], usageType: "MainCompanyNumber" }],
-    null,
-  );
-
-  assert.equal(fromNumber, "");
-});
-
-test("does not treat call flip devices as RingOut numbers", () => {
+test("does not treat call flip devices as caller-id numbers", () => {
   assert.equal(
     isRingCentralOutboundNumber({
       phoneNumber: "18005550125",
@@ -126,7 +73,17 @@ test("does not treat call flip devices as RingOut numbers", () => {
   );
 });
 
-test("skips call flip devices when choosing the default RingOut from number", () => {
+test("treats call flip devices as RingOut numbers", () => {
+  assert.equal(
+    selectRingCentralRingOutFromNumber(
+      [{ phoneNumber: "18005550123", features: ["CallFlip"] }],
+      null,
+    ),
+    "18005550123",
+  );
+});
+
+test("selects the first enabled RingOut number as the default forwarding target", () => {
   const fromNumber = selectRingCentralRingOutFromNumber(
     [
       { phoneNumber: "18005550123", features: ["CallFlip"] },
@@ -135,19 +92,74 @@ test("skips call flip devices when choosing the default RingOut from number", ()
     null,
   );
 
-  assert.equal(fromNumber, "");
+  assert.equal(fromNumber, "18005550123");
 });
 
-test("uses forwarding targets as RingOut from numbers", () => {
+test("does not use disabled forwarding numbers as RingOut from numbers", () => {
   const fromNumber = selectRingCentralRingOutFromNumber(
     [
-      { phoneNumber: "18005550123", features: ["CallerId"] },
-      { phoneNumber: "18005550124", features: ["CallForwarding"], usageType: "ForwardedNumber" },
+      { phoneNumber: "18005550123", features: ["CallForwarding"], usageType: "ForwardedNumber", enabled: false },
+      { phoneNumber: "18005550124", features: ["CallForwarding"], usageType: "ForwardedNumber", enabled: true },
     ],
     null,
   );
 
   assert.equal(fromNumber, "18005550124");
+});
+
+test("treats forwarding targets as RingOut from numbers", () => {
+  assert.equal(
+    isRingCentralRingOutFromNumber({
+      phoneNumber: "18005550124",
+      features: ["CallForwarding"],
+      usageType: "ForwardedNumber",
+    }),
+    true,
+  );
+});
+
+test("treats legacy RingCentral usage types as RingOut from numbers", () => {
+  assert.equal(
+    isRingCentralRingOutFromNumber({
+      phoneNumber: "18005550124",
+      usageType: "ForwardedNumber",
+    }),
+    true,
+  );
+  assert.equal(
+    isRingCentralRingOutFromNumber({
+      phoneNumber: "18005550125",
+      usageType: "DirectNumber",
+    }),
+    true,
+  );
+  assert.equal(
+    isRingCentralRingOutFromNumber({
+      phoneNumber: "18005550127",
+      usageType: "MainCompanyNumber",
+    }),
+    true,
+  );
+});
+
+test("treats forwarding target types as RingOut from numbers", () => {
+  assert.equal(
+    isRingCentralRingOutFromNumber({
+      phoneNumber: "18005550126",
+      type: "PhoneLine",
+      enabled: true,
+    }),
+    true,
+  );
+  assert.equal(
+    isRingCentralRingOutFromNumber({
+      phoneNumber: "18005550127",
+      type: "VoiceFax",
+      usageType: "DirectNumber",
+      enabled: true,
+    }),
+    true,
+  );
 });
 
 test("keeps polling while a RingOut leg is still being established", () => {

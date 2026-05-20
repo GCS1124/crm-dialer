@@ -84,6 +84,7 @@ interface DbUserRow {
   title: string | null;
   timezone: string;
   status: User["status"];
+  must_reset_password: boolean;
 }
 
 interface DbLeadRow {
@@ -752,6 +753,7 @@ function mapUser(row: DbUserRow): User {
     avatar: getInitials(row.full_name),
     title: row.title ?? "Outbound Agent",
     status: row.status,
+    mustResetPassword: row.must_reset_password,
   };
 }
 
@@ -1032,7 +1034,7 @@ async function fetchWorkspaceUsers() {
   const client = requireSupabaseClient();
   const { data, error } = await client
     .from("app_users")
-    .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status")
+    .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status, must_reset_password")
     .order("full_name", { ascending: true });
 
   if (error) {

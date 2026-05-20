@@ -4,7 +4,11 @@ import { CheckCircle2, RotateCcw, XCircle } from "lucide-react";
 import { Button } from "../components/shared/Button";
 import { Card } from "../components/shared/Card";
 import { PageHeader } from "../components/shared/PageHeader";
-import { formatRingCentralPhoneNumber, isRingCentralOutboundNumber } from "../lib/ringcentral";
+import { PasswordResetPanel } from "../components/auth/PasswordResetPanel";
+import {
+  formatRingCentralPhoneNumber,
+  isRingCentralOutboundNumber,
+} from "../lib/ringcentral";
 import { useAppState } from "../hooks/useAppState";
 
 function StatusRow({
@@ -34,34 +38,35 @@ export function SettingsPage() {
     ringCentralStatus,
     connectRingCentral,
     disconnectRingCentral,
-    setRingCentralCallerId,
+    setRingCentralRingOutNumber,
     refreshRingCentralStatus,
   } = useAppState();
   const [ringCentralActionMessage, setRingCentralActionMessage] = useState<string | null>(null);
-  const [selectedCallerId, setSelectedCallerId] = useState(ringCentralStatus.selectedCallerId ?? "");
-
-  useEffect(() => {
-    setSelectedCallerId(ringCentralStatus.selectedCallerId ?? "");
-  }, [ringCentralStatus.selectedCallerId]);
-
-  const selectableNumbers = useMemo(
-    () => ringCentralStatus.availableCallerIds.filter(isRingCentralOutboundNumber),
-    [ringCentralStatus.availableCallerIds],
+  const [selectedRingOutNumber, setSelectedRingOutNumber] = useState(
+    ringCentralStatus.selectedRingOutNumber ?? "",
   );
 
-  const options = selectableNumbers.length ? selectableNumbers : ringCentralStatus.availableCallerIds;
-  const canSaveCallerId =
-    ringCentralStatus.connected &&
-    selectedCallerId !== (ringCentralStatus.selectedCallerId ?? "");
+  useEffect(() => {
+    setSelectedRingOutNumber(ringCentralStatus.selectedRingOutNumber ?? "");
+  }, [ringCentralStatus.selectedRingOutNumber]);
 
-  const handleSaveCallerId = async () => {
+  const selectableNumbers = useMemo(
+    () => ringCentralStatus.availableRingOutNumbers.filter(isRingCentralOutboundNumber),
+    [ringCentralStatus.availableRingOutNumbers],
+  );
+
+  const options = selectableNumbers;
+  const canSaveRingOutNumber =
+    ringCentralStatus.connected &&
+    selectedRingOutNumber !== (ringCentralStatus.selectedRingOutNumber ?? "");
+
+  const handleSaveRingOutNumber = async () => {
     try {
       setRingCentralActionMessage(null);
-      await setRingCentralCallerId(selectedCallerId || null);
-      await refreshRingCentralStatus();
+      await setRingCentralRingOutNumber(selectedRingOutNumber || null);
     } catch (error) {
       setRingCentralActionMessage(
-        error instanceof Error ? error.message : "Unable to save that caller ID.",
+        error instanceof Error ? error.message : "Unable to save that caller ID number.",
       );
     }
   };
@@ -82,7 +87,6 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Workspace configuration"
-        description="Auth, imports, Supabase, and RingCentral caller-ID settings."
       />
 
       <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
@@ -90,9 +94,6 @@ export function SettingsPage() {
           <div className="crm-subtle-card flex items-center justify-between px-4 py-4">
             <div>
               <p className="font-medium text-slate-900 dark:text-white">Theme</p>
-              <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                Keep the workspace in light or dark mode.
-              </p>
             </div>
             <Button variant="secondary" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
               {theme === "dark" ? "Use light" : "Use dark"}
@@ -101,24 +102,22 @@ export function SettingsPage() {
 
           <div className="crm-subtle-card px-4 py-4">
             <p className="font-medium text-slate-900 dark:text-white">Auth mode</p>
-            <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
-              Supabase Auth with backend-issued workspace JWT.
+            <p className="mt-1 text-[12px] font-medium text-slate-700 dark:text-slate-200">
+              Supabase Auth
             </p>
           </div>
 
           <div className="crm-subtle-card px-4 py-4">
             <p className="font-medium text-slate-900 dark:text-white">Signup</p>
-            <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
-              {settingsStatus.signupEnabled
-                ? "Public agent signup is enabled."
-                : "Signup is disabled."}
+            <p className="mt-1 text-[12px] font-medium text-slate-700 dark:text-slate-200">
+              {settingsStatus.signupEnabled ? "Enabled" : "Disabled"}
             </p>
           </div>
 
           <div className="crm-subtle-card px-4 py-4">
             <p className="font-medium text-slate-900 dark:text-white">Bulk import</p>
-            <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
-              Supported formats: {settingsStatus.importFormats.join(", ")}
+            <p className="mt-1 text-[12px] font-medium text-slate-700 dark:text-slate-200">
+              {settingsStatus.importFormats.join(" • ")}
             </p>
           </div>
         </Card>
@@ -130,12 +129,9 @@ export function SettingsPage() {
                 <h3 className="text-[18px] font-semibold text-slate-900 dark:text-white">
                   RingCentral connection
                 </h3>
-                <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                  The CRM uses RingCentral Voice API calling and the caller ID you choose below.
-                </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={refreshRingCentralStatus}>
+                <Button variant="secondary" size="sm" onClick={() => refreshRingCentralStatus({ force: true })}>
                   <RotateCcw size={14} />
                   Refresh
                 </Button>
@@ -176,9 +172,9 @@ export function SettingsPage() {
                   Selected caller ID
                 </p>
                 <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-                  {ringCentralStatus.selectedCallerId
-                    ? formatRingCentralPhoneNumber(ringCentralStatus.selectedCallerId)
-                    : "None selected"}
+                  {ringCentralStatus.selectedRingOutNumber
+                    ? formatRingCentralPhoneNumber(ringCentralStatus.selectedRingOutNumber)
+                    : "RingCentral default"}
                 </p>
               </div>
             </div>
@@ -188,21 +184,16 @@ export function SettingsPage() {
                 <p className="text-sm font-medium text-slate-900 dark:text-white">
                   Outbound caller ID
                 </p>
-                <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                  RingOut uses the selected caller ID when RingCentral accepts it for your
-                  account. If the selected number is unavailable, RingCentral falls back to the
-                  account default calling number or forwarding target.
-                </p>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                 <label className="block">
-                  <span className="sr-only">RingCentral caller ID</span>
+                  <span className="sr-only">RingCentral caller ID number</span>
                   <select
                     className="h-10 w-full rounded-[12px] border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-[#1f7db3] dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    value={selectedCallerId}
-                    onChange={(event) => setSelectedCallerId(event.target.value)}
-                    disabled={!ringCentralStatus.connected || options.length === 0}
+                    value={selectedRingOutNumber}
+                    onChange={(event) => setSelectedRingOutNumber(event.target.value)}
+                    disabled={!ringCentralStatus.connected}
                   >
                     <option value="">Use RingCentral default caller ID</option>
                     {options.map((number) => (
@@ -215,8 +206,8 @@ export function SettingsPage() {
 
                 <Button
                   variant="secondary"
-                  onClick={handleSaveCallerId}
-                  disabled={!canSaveCallerId}
+                  onClick={handleSaveRingOutNumber}
+                  disabled={!canSaveRingOutNumber}
                 >
                   Save caller ID
                 </Button>
@@ -252,9 +243,6 @@ export function SettingsPage() {
               <h3 className="text-[18px] font-semibold text-slate-900 dark:text-white">
                 Supabase status
               </h3>
-              <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                Backend data and authentication health checks.
-              </p>
             </div>
             <StatusRow label="Backend connected" value={settingsStatus.supabase.connected} />
             <StatusRow
@@ -274,6 +262,10 @@ export function SettingsPage() {
                 {settingsStatus.supabase.reason}
               </div>
             ) : null}
+          </Card>
+
+          <Card className="space-y-4 p-5">
+            <PasswordResetPanel mode="settings" compact />
           </Card>
         </div>
       </div>

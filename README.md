@@ -15,7 +15,7 @@ Supabase-first CRM dialer built with React, Vite, TypeScript, and Tailwind. The 
 - Preview dialer with queue navigation and call wrap-up
 - Manual dialer with RingCentral RingOut
 - Callbacks, lead management, reports, and user management
-- RingCentral caller-ID selection and RingOut flow
+- RingCentral forwarding-number selection and RingOut flow
 
 ## Repo layout
 
@@ -70,13 +70,15 @@ Link the project, apply the schema and seed data, then deploy the Edge Functions
 ```powershell
 npx supabase@latest link --project-ref uhnbpmzlsuzaxnkbiupc
 npx supabase@latest db push --linked
-npx supabase@latest functions deploy workspace-users ringcentral --project-ref uhnbpmzlsuzaxnkbiupc
+npx supabase@latest functions deploy workspace-users ringcentral ringcentral-live ringcentral-webhook --project-ref uhnbpmzlsuzaxnkbiupc
 ```
 
 Functions in this repo:
 
 - `workspace-users` creates and deletes managed workspace users
-- `ringcentral` handles RingCentral auth, caller IDs, and RingOut placement
+- `ringcentral` handles RingCentral JWT connection, forwarding-number selection, and RingOut placement
+- `ringcentral-live` handles RingOut polling, cancel, and end-call controls
+- `ringcentral-webhook` receives RingCentral telephony session updates for live call control
 
 Required Supabase secrets for the RingCentral function:
 
@@ -103,4 +105,4 @@ RingCentral JWT mode does not use the browser redirect flow. The app exchanges t
 
 - There is no local JSON fallback and no separate Node runtime anymore.
 - All CRM data access goes through Supabase.
-- RingCentral now places RingOut calls and stores the selected caller ID per workspace user.
+- RingCentral now places RingOut calls and stores the selected RingOut forwarding number per workspace user.

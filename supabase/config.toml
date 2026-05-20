@@ -137,6 +137,9 @@ max_catalogs = 2
 [functions.ringcentral]
 verify_jwt = true
 
+[functions.ringcentral-live]
+verify_jwt = true
+
 [functions.ringcentral-webhook]
 verify_jwt = false
 

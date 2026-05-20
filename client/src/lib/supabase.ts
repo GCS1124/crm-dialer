@@ -10,12 +10,31 @@ export const hasSupabaseBrowserConfig = Boolean(supabaseUrl && supabaseBrowserKe
 export const supabase: SupabaseClient | null = hasSupabaseBrowserConfig
   ? createClient(supabaseUrl!, supabaseBrowserKey!, {
       auth: {
-        persistSession: true,
-        autoRefreshToken: true,
+        persistSession: false,
+        autoRefreshToken: false,
         detectSessionInUrl: true,
       },
     })
   : null;
+
+export function createSupabaseTokenClient(accessToken: string) {
+  if (!hasSupabaseBrowserConfig) {
+    throw new Error("Supabase browser client is not configured.");
+  }
+
+  return createClient(supabaseUrl!, supabaseBrowserKey!, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+}
 
 export function assertSupabaseConfigured() {
   if (!supabase) {

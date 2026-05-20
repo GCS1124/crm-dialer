@@ -11,6 +11,7 @@ interface AppUserRow {
   title: string | null;
   timezone: string;
   status: "online" | "away" | "offline";
+  must_reset_password: boolean;
 }
 
 function getInitials(name: string) {
@@ -33,6 +34,7 @@ function mapUser(row: AppUserRow) {
     avatar: getInitials(row.full_name),
     title: row.title ?? "Outbound Agent",
     status: row.status,
+    mustResetPassword: row.must_reset_password,
     activeSipProfileId: null,
     activeSipProfileLabel: null,
   };
@@ -51,7 +53,7 @@ async function requireAdminUser(request: Request) {
   const serviceClient = createServiceClient();
   const { data, error } = await serviceClient
     .from("app_users")
-    .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status")
+    .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status, must_reset_password")
     .eq("auth_user_id", currentUser.id)
     .maybeSingle();
 
@@ -123,8 +125,9 @@ Deno.serve(async (request) => {
           title,
           timezone,
           status: "offline",
+          must_reset_password: true,
         })
-        .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status")
+        .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status, must_reset_password")
         .single();
 
       if (insertError || !inserted) {
@@ -161,7 +164,7 @@ Deno.serve(async (request) => {
 
       const { data: targetUser, error: targetError } = await serviceClient
         .from("app_users")
-        .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status")
+        .select("id, auth_user_id, full_name, email, role, team_name, title, timezone, status, must_reset_password")
         .eq("id", userId)
         .maybeSingle();
 

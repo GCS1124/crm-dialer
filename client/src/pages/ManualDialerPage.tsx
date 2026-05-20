@@ -56,6 +56,7 @@ export function ManualDialerPage() {
     [leads, manualDialNumber],
   );
   const isManualDialNumberValid = Boolean(manualDialNumber);
+  const hasRingOutNumbers = ringCentralStatus.availableRingOutNumbers.length > 0;
 
   useEffect(() => {
     if (!activeCall) {
@@ -116,6 +117,11 @@ export function ManualDialerPage() {
       return;
     }
 
+    if (!hasRingOutNumbers) {
+      setDialPadMessage("No RingOut numbers configured in RingCentral. Set up a forwarding number or call device in your RingCentral account.");
+      return;
+    }
+
     try {
       await startCall({
         phone: callNumber,
@@ -150,9 +156,6 @@ export function ManualDialerPage() {
             <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
               Manual Dialer
             </p>
-            <p className="mt-1 text-[13px] font-medium text-slate-900 dark:text-white">
-              Dial any number without selecting a lead
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => navigate("/dialer")}>
@@ -182,9 +185,6 @@ export function ManualDialerPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[13px] font-semibold text-slate-900 dark:text-white">Number</p>
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                    Pick a known destination or enter a custom number.
-                  </p>
                 </div>
                 <Badge
                   className={cn(
@@ -198,6 +198,10 @@ export function ManualDialerPage() {
               {!ringCentralStatus.connected ? (
                 <p className="text-[11px] text-amber-600 dark:text-amber-300">
                   RingCentral is not connected. Connect it in Settings before placing calls.
+                </p>
+              ) : !hasRingOutNumbers ? (
+                <p className="text-[11px] text-amber-600 dark:text-amber-300">
+                  No RingOut numbers configured. Set up a forwarding number or call device in your RingCentral account.
                 </p>
               ) : null}
 
@@ -275,7 +279,7 @@ export function ManualDialerPage() {
                 size="sm"
                 className="w-full"
                 onClick={() => void handleDialPadCall()}
-                disabled={!isManualDialNumberValid || callInProgress}
+                disabled={!isManualDialNumberValid || callInProgress || !ringCentralStatus.connected || !hasRingOutNumbers}
               >
                 <PhoneCall size={14} />
                 {callInProgress
@@ -333,36 +337,48 @@ export function ManualDialerPage() {
           </div>
 
           <div className="space-y-4">
-            <Card className="space-y-3 p-5">
-              <div>
-                <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
-                  Dialing behavior
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                  The manual dialer uses RingCentral RingOut, so the selected RingCentral device
-                  rings instead of handing the call to the OS phone app.
-                </p>
-              </div>
-              <div className="crm-subtle-card px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
-                Use the keypad or type a number, then press the button to place the RingOut call.
-              </div>
-            </Card>
+            {activeCall ? (
+              <Card className="space-y-3 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold text-slate-900 dark:text-white">
+                      {activeCall.displayName}
+                    </p>
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                      {formatPhone(activeCall.dialedNumber)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Timer</p>
+                    <p className="text-[16px] font-medium text-slate-900 dark:text-white">
+                      {formatDuration(elapsed)}
+                    </p>
+                  </div>
+                </div>
 
-            <Card className="space-y-3 p-5">
-              <div>
-                <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
-                  RingCentral call control
-                </p>
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                  Calls are placed through RingCentral APIs. The CRM keeps the lead queue, timer,
-                  and wrap-up flow in sync.
-                </p>
-              </div>
-              <div className="crm-subtle-card px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
-                The number is normalized to US format first, then sent to RingCentral with the
-                selected caller ID.
-              </div>
-            </Card>
+                {isIncomingRinging ? (
+                  <Button size="sm" variant="danger" onClick={endCall}>
+                    <PhoneOff size={14} />
+                    Reject
+                  </Button>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button size="sm" variant="danger" onClick={endCall}>
+                      <PhoneOff size={14} />
+                      End call
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            ) : null}
+
+            {wrapUpLeadId ? (
+              <PostCallPanel
+                open={Boolean(wrapUpLeadId)}
+                leadName={leads.find((lead) => lead.id === wrapUpLeadId)?.fullName ?? "this lead"}
+                onSave={saveDisposition}
+              />
+            ) : null}
           </div>
         </div>
       </section>

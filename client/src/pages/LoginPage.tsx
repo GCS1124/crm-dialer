@@ -37,7 +37,7 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (currentUser) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={currentUser.mustResetPassword ? "/reset-password" : "/dashboard"} replace />;
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

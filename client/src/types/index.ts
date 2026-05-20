@@ -76,6 +76,7 @@ export interface User {
   status: "online" | "away" | "offline";
   activeSipProfileId?: string | null;
   activeSipProfileLabel?: string | null;
+  mustResetPassword?: boolean;
 }
 
 export interface NoteEntry {

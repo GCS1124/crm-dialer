@@ -399,16 +399,22 @@ async function refreshIntegration(
     throw new Error("RingCentral token response was incomplete.");
   }
 
+  const latestIntegration =
+    (await loadIntegrationBySubscriptionId(integration.subscription_id ?? "")) ??
+    (integration.webhook_validation_token
+      ? await loadIntegrationByValidationToken(integration.webhook_validation_token)
+      : null);
+  const baseIntegration = latestIntegration ?? integration;
   const updated: RingCentralIntegrationRow = {
-    ...integration,
+    ...baseIntegration,
     access_token: accessToken,
     refresh_token: refreshToken,
     token_type: tokenType || "Bearer",
-    scope: readString(data.scope) || integration.scope,
+    scope: readString(data.scope) || baseIntegration.scope,
     access_token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
     refresh_token_expires_at: Number.isFinite(refreshTokenExpiresIn)
       ? new Date(Date.now() + refreshTokenExpiresIn * 1000).toISOString()
-      : integration.refresh_token_expires_at,
+      : baseIntegration.refresh_token_expires_at,
     updated_at: new Date().toISOString(),
   };
 
@@ -553,8 +559,14 @@ async function saveWebhookSubscription(
     throw new Error("RingCentral subscription response was incomplete.");
   }
 
+  const latestIntegration =
+    (await loadIntegrationBySubscriptionId(integration.subscription_id ?? "")) ??
+    (integration.webhook_validation_token
+      ? await loadIntegrationByValidationToken(integration.webhook_validation_token)
+      : null);
+  const baseIntegration = latestIntegration ?? integration;
   const updated: RingCentralIntegrationRow = {
-    ...integration,
+    ...baseIntegration,
     subscription_id: subscriptionId,
     subscription_expires_at: expirationTime,
     webhook_validation_token: validationToken,

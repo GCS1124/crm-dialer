@@ -1,8 +1,8 @@
-insert into public.app_users (id, full_name, email, role, team_name, title, timezone, status)
+insert into public.app_users (id, full_name, email, role, team_name, title, timezone, status, must_reset_password)
 values
-  ('11111111-1111-1111-1111-111111111111', 'Olivia Hart', 'admin@previewdialer.io', 'admin', 'Global Revenue Ops', 'Revenue Operations Admin', 'America/New_York', 'online'),
-  ('22222222-2222-2222-2222-222222222222', 'Marcus Reed', 'leader@previewdialer.io', 'team_leader', 'North America SDR', 'Outbound Team Lead', 'America/Chicago', 'online'),
-  ('33333333-3333-3333-3333-333333333333', 'Priya Nair', 'priya@previewdialer.io', 'agent', 'North America SDR', 'Senior Appointment Setter', 'Asia/Kolkata', 'online');
+  ('11111111-1111-1111-1111-111111111111', 'Olivia Hart', 'admin@previewdialer.io', 'admin', 'Global Revenue Ops', 'Revenue Operations Admin', 'America/New_York', 'online', false),
+  ('22222222-2222-2222-2222-222222222222', 'Marcus Reed', 'leader@previewdialer.io', 'team_leader', 'North America SDR', 'Outbound Team Lead', 'America/Chicago', 'online', false),
+  ('33333333-3333-3333-3333-333333333333', 'Priya Nair', 'priya@previewdialer.io', 'agent', 'North America SDR', 'Senior Appointment Setter', 'Asia/Kolkata', 'online', false);
 
 insert into public.leads (
   id,

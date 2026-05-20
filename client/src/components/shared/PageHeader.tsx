@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 interface PageHeaderProps {
   eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
   actions?: ReactNode;
 }
 
@@ -25,9 +25,11 @@ export function PageHeader({
           <h1 className="text-[28px] font-semibold tracking-tight text-slate-950 dark:text-white">
             {title}
           </h1>
-          <p className="mt-1 max-w-2xl text-[13px] text-slate-500 dark:text-slate-400">
-            {description}
-          </p>
+          {description ? (
+            <p className="mt-1 max-w-2xl text-[13px] text-slate-500 dark:text-slate-400">
+              {description}
+            </p>
+          ) : null}
         </div>
       </div>
       {actions ? <div className="flex flex-wrap gap-2 lg:justify-end">{actions}</div> : null}
