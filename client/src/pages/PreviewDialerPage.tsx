@@ -34,6 +34,7 @@ import { buildLeadDestinationOptions } from "../lib/dialerNumbers";
 import {
   getPrimaryCallActionLabel,
   getSecondaryCallActionLabel,
+  isCallLaunchDisabled,
 } from "../lib/callUi";
 import { parseLeadFile } from "../lib/csv";
 import {
@@ -138,6 +139,7 @@ export function PreviewDialerPage() {
     currentLeadId,
     activeCall,
     wrapUpLeadId,
+    callLaunchPending,
     callError,
     selectLead,
     previousLead,
@@ -220,7 +222,13 @@ export function PreviewDialerPage() {
         timezone: currentUser?.timezone,
       })
     : "";
-  const canCallLead = Boolean(destinationDialNumber) && !activeCall && !wrapUpLeadId;
+  const canCallLead =
+    Boolean(destinationDialNumber) &&
+    !isCallLaunchDisabled({
+      activeCall: null,
+      wrapUpLeadId,
+      callLaunchPending,
+    });
   const isIncomingRinging = activeCall?.direction === "incoming" && activeCall?.status === "ringing";
   const primaryCallActionLabel = getPrimaryCallActionLabel(activeCall);
   const secondaryCallActionLabel = getSecondaryCallActionLabel(activeCall);
@@ -340,12 +348,14 @@ export function PreviewDialerPage() {
   const leadStatusLabel = activeLead.status.replace("_", " ");
   const callStatusText = wrapUpLeadId
     ? "Disposition open"
+    : callLaunchPending
+    ? "Dialing..."
     : activeCall
     ? `${activeCall.status.replace(/_/g, " ")} | ${formatDuration(heroTimer)}`
     : "Ready to dial";
   const callStatusTone = wrapUpLeadId
     ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-300"
-    : activeCall
+    : activeCall || callLaunchPending
     ? "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-500/30 dark:bg-cyan-950/20 dark:text-cyan-300"
     : "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300";
   const leadDetails = [
@@ -408,7 +418,7 @@ export function PreviewDialerPage() {
                 variant="secondary"
                 className="h-12 w-12 shrink-0 px-0 text-slate-900 dark:text-white"
                 onClick={previousLead}
-                disabled={Boolean(wrapUpLeadId || activeCall)}
+                disabled={Boolean(wrapUpLeadId || activeCall || callLaunchPending)}
                 aria-label="Back to previous lead"
                 title="Back"
               >
@@ -420,7 +430,7 @@ export function PreviewDialerPage() {
                 variant="secondary"
                 className="h-12 w-12 shrink-0 px-0 text-slate-900 dark:text-white"
                 onClick={skipLead}
-                disabled={Boolean(wrapUpLeadId || activeCall)}
+                disabled={Boolean(wrapUpLeadId || activeCall || callLaunchPending)}
                 aria-label="Skip current lead"
                 title="Skip"
               >
@@ -448,18 +458,22 @@ export function PreviewDialerPage() {
                   </Button>
                 </>
               ) : (
-                <Button
-                  size="md"
-                  onClick={() => {
-                    if (activeCall) {
-                      void endCall();
-                      return;
-                    }
+              <Button
+                size="md"
+                onClick={() => {
+                  if (activeCall) {
+                    void endCall();
+                    return;
+                  }
 
-                    void handleCallLead();
-                  }}
-                  disabled={Boolean(wrapUpLeadId) || (!activeCall && !canCallLead)}
-                >
+                  void handleCallLead();
+                }}
+                disabled={
+                  callLaunchPending ||
+                  Boolean(wrapUpLeadId) ||
+                  (!activeCall && !canCallLead)
+                }
+              >
                   {activeCall ? <PhoneOff size={15} /> : <PhoneCall size={15} />}
                   {primaryCallActionLabel}
                 </Button>

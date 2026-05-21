@@ -12,6 +12,7 @@ import { findLeadForDialNumber } from "../lib/dialerNumbers";
 import {
   getPrimaryCallActionLabel,
   getSecondaryCallActionLabel,
+  isCallLaunchDisabled,
 } from "../lib/callUi";
 import { isRingCentralRateLimitError } from "../lib/ringcentral";
 import { cn, formatDuration, formatPhone } from "../lib/utils";
@@ -30,6 +31,7 @@ export function ManualDialerPage() {
     activeCall,
     ringCentralStatus,
     wrapUpLeadId,
+    callLaunchPending,
     callError,
     startCall,
     answerCall,
@@ -44,7 +46,12 @@ export function ManualDialerPage() {
 
   const dialTarget = useMemo(() => sanitizeDialPadInput(dialPadValue), [dialPadValue]);
   const dialDigits = useMemo(() => dialTarget.replace(/[^\d]/g, ""), [dialTarget]);
-  const callInProgress = Boolean(activeCall);
+  const callInProgress = isCallLaunchDisabled({
+    activeCall,
+    wrapUpLeadId,
+    callLaunchPending,
+    allowDuringWrapUp: true,
+  });
 
   const manualDialNumber = useMemo(() => {
     return formatManualDialNumberForCountry(dialTarget, {
@@ -77,7 +84,9 @@ export function ManualDialerPage() {
   }
 
   const callStatusLabel =
-    activeCall?.direction === "incoming" && activeCall.status === "ringing"
+    callLaunchPending
+      ? "dialing"
+      : activeCall?.direction === "incoming" && activeCall.status === "ringing"
       ? "incoming"
       : activeCall?.status ?? "idle";
   const isIncomingRinging = activeCall?.direction === "incoming" && activeCall?.status === "ringing";

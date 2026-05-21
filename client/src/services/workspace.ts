@@ -1326,8 +1326,9 @@ function buildWorkspaceSettingsStatus(voice: VoiceSessionResponse): WorkspaceSet
 
 export async function loadWorkspace(currentUser: User, token?: string | null): Promise<WorkspacePayload> {
   const { users, leads } = await fetchLeadsWorkspace();
-  const { profiles, activeProfile, activeStoredProfile, selectionRequired } =
-    await loadSipProfileState(currentUser, users);
+  const profiles: SipProfile[] = [];
+  const activeProfile: SipProfile | null = null;
+  const selectionRequired = false;
   const cachedRingCentralVoiceSession = getCachedRingCentralBrowserVoiceSession(currentUser.id);
   const ringCentralVoiceSession = cachedRingCentralVoiceSession ?? await loadRingCentralBrowserVoiceSessionAction().catch(() => null);
   if (ringCentralVoiceSession?.available) {
@@ -1336,30 +1337,11 @@ export async function loadWorkspace(currentUser: User, token?: string | null): P
   const session: VoiceSessionResponse = ringCentralVoiceSession?.available
     ? {
         ...ringCentralVoiceSession,
-        provider: "ringcentral",
-        source: "ringcentral",
-        displayName: ringCentralVoiceSession.displayName ?? currentUser.name,
-        authorizationId: ringCentralVoiceSession.authorizationId ?? null,
-      }
-    : activeStoredProfile
-    ? {
-        provider: "ringcentral",
-        available: true,
-        source: "profile",
-        callerId: activeStoredProfile.callerId,
-        websocketUrl: activeStoredProfile.providerUrl,
-        sipDomain: activeStoredProfile.sipDomain,
-        username: activeStoredProfile.sipUsername,
-        profileId: activeStoredProfile.id,
-        profileLabel: activeStoredProfile.label,
-        sipUri: `sip:${activeStoredProfile.sipUsername}@${activeStoredProfile.sipDomain}`,
-        authorizationId: activeStoredProfile.id,
-        authorizationUsername: activeStoredProfile.sipUsername,
-        authorizationPassword: activeStoredProfile.sipPassword,
-        dialPrefix: null,
-        displayName: currentUser.name,
-        message: null,
-      }
+      provider: "ringcentral",
+      source: "ringcentral",
+      displayName: ringCentralVoiceSession.displayName ?? currentUser.name,
+      authorizationId: ringCentralVoiceSession.authorizationId ?? null,
+    }
     : ringCentralVoiceSession
     ? {
         ...ringCentralVoiceSession,
@@ -1383,8 +1365,8 @@ export async function loadWorkspace(currentUser: User, token?: string | null): P
       };
   const currentSessionUser = {
     ...currentUser,
-    activeSipProfileId: activeProfile?.id ?? null,
-    activeSipProfileLabel: activeProfile?.label ?? null,
+    activeSipProfileId: null,
+    activeSipProfileLabel: null,
   };
 
   return {

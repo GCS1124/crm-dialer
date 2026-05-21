@@ -141,6 +141,14 @@ function isMicrophoneAccessError(error: unknown) {
   );
 }
 
+function isBrowserGestureRequiredError(error: unknown) {
+  const candidate = error as { name?: unknown; message?: unknown } | null;
+  const name = typeof candidate?.name === "string" ? candidate.name : "";
+  const message = typeof candidate?.message === "string" ? candidate.message : "";
+
+  return name === "NotAllowedError" && /user gesture|required|activation/i.test(message);
+}
+
 async function ensureMicrophoneAccess() {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
     return;
@@ -312,6 +320,7 @@ interface AppStateContextValue {
   currentLeadId: string | null;
   activeCall: ActiveCall | null;
   wrapUpLeadId: string | null;
+  callLaunchPending: boolean;
   autoDialEnabled: boolean;
   autoDialDelaySeconds: number;
   autoDialCountdown: number | null;
@@ -448,6 +457,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [wrapUpLeadId, setWrapUpLeadId] = useState<string | null>(null);
   const [wrapUpDurationSeconds, setWrapUpDurationSeconds] = useState(0);
+  const [callLaunchPending, setCallLaunchPending] = useState(false);
   const timeTrackingStorageKey = currentUser
     ? `preview-dialer-time-tracking:${currentUser.id}`
     : "preview-dialer-time-tracking:guest";
@@ -462,8 +472,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
   const voiceClientRef = useRef<RingCentralSoftphoneClient | null>(null);
   const voiceConfigSignatureRef = useRef<string | null>(null);
+  const browserSoftphoneStartListenerRef = useRef<(() => void) | null>(null);
+  const browserSoftphoneStartInProgressRef = useRef(false);
   const wrapUpLeadIdRef = useRef<string | null>(null);
   const suppressVoiceDisconnectRef = useRef(0);
+  const callLaunchPendingRef = useRef(false);
   const activeCallMetaRef = useRef<{
     leadId: string | null;
     dialedNumber: string;
@@ -1093,9 +1106,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setActiveCall(null);
     setWrapUpLeadId(null);
     setWrapUpDurationSeconds(0);
+    setCallLaunchPending(false);
     wrapUpLeadIdRef.current = null;
     lastAutoDialLeadIdRef.current = null;
     queueStateSignatureRef.current = null;
+    callLaunchPendingRef.current = false;
     if (autoDialTimerRef.current) {
       window.clearInterval(autoDialTimerRef.current);
       autoDialTimerRef.current = null;
@@ -1220,6 +1235,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     voiceClientRef.current = null;
     voiceConfigSignatureRef.current = null;
     remoteAudioRef.current = null;
+    clearBrowserSoftphoneActivationListener();
+    browserSoftphoneStartInProgressRef.current = false;
 
     if (!client) {
       return;
@@ -1235,6 +1252,71 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         0,
         suppressVoiceDisconnectRef.current - 1,
       );
+    }
+  }
+
+  function clearBrowserSoftphoneActivationListener() {
+    const listener = browserSoftphoneStartListenerRef.current;
+    if (!listener || typeof window === "undefined") {
+      return;
+    }
+
+    window.removeEventListener("pointerdown", listener, true);
+    window.removeEventListener("keydown", listener, true);
+    window.removeEventListener("touchstart", listener, true);
+    browserSoftphoneStartListenerRef.current = null;
+  }
+
+  function queueBrowserSoftphoneActivation(client: RingCentralSoftphoneClient) {
+    if (typeof window === "undefined" || browserSoftphoneStartListenerRef.current) {
+      return;
+    }
+
+    const listener = () => {
+      clearBrowserSoftphoneActivationListener();
+      void startBrowserSoftphone(client).catch(() => undefined);
+    };
+
+    browserSoftphoneStartListenerRef.current = listener;
+    window.addEventListener("pointerdown", listener, true);
+    window.addEventListener("keydown", listener, true);
+    window.addEventListener("touchstart", listener, true);
+  }
+
+  async function startBrowserSoftphone(client: RingCentralSoftphoneClient) {
+    if (browserSoftphoneStartInProgressRef.current || voiceClientRef.current !== client) {
+      return;
+    }
+
+    browserSoftphoneStartInProgressRef.current = true;
+    try {
+      await client.start();
+      if (voiceClientRef.current !== client) {
+        return;
+      }
+
+      voiceConfigSignatureRef.current = JSON.stringify({
+        provider: browserSoftphoneConfig.source,
+        websocketUrl: browserSoftphoneConfig.websocketUrl,
+        sipDomain: browserSoftphoneConfig.sipDomain,
+        callerId: browserSoftphoneConfig.callerId,
+        authorizationId: browserSoftphoneConfig.authorizationId,
+        authorizationUsername: browserSoftphoneConfig.authorizationUsername,
+        displayName: browserSoftphoneConfig.displayName,
+        profileId: browserSoftphoneConfig.profileId,
+      });
+      clearBrowserSoftphoneActivationListener();
+    } catch (error) {
+      if (isBrowserGestureRequiredError(error)) {
+        queueBrowserSoftphoneActivation(client);
+        return;
+      }
+
+      const message =
+        error instanceof Error ? error.message : "Unable to start the RingCentral browser softphone.";
+      setCallError((existing) => existing ?? message);
+    } finally {
+      browserSoftphoneStartInProgressRef.current = false;
     }
   }
 
@@ -1447,17 +1529,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         }
 
         voiceClientRef.current = client;
-        voiceConfigSignatureRef.current = JSON.stringify({
-          provider: browserSoftphoneConfig.source,
-          websocketUrl: browserSoftphoneConfig.websocketUrl,
-          sipDomain: browserSoftphoneConfig.sipDomain,
-          callerId: browserSoftphoneConfig.callerId,
-          authorizationId: browserSoftphoneConfig.authorizationId,
-          authorizationUsername: browserSoftphoneConfig.authorizationUsername,
-          displayName: browserSoftphoneConfig.displayName,
-          profileId: browserSoftphoneConfig.profileId,
-        });
-        await client.start();
+        queueBrowserSoftphoneActivation(client);
       } catch (error) {
         if (!cancelled) {
           const message =
@@ -1760,121 +1832,133 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     phoneIndex?: number;
     allowDuringWrapUp?: boolean;
   }) => {
-    if (activeCall || (wrapUpLeadId && !input?.allowDuringWrapUp)) {
+    if (
+      callLaunchPendingRef.current ||
+      activeCall ||
+      (wrapUpLeadId && !input?.allowDuringWrapUp)
+    ) {
       return;
     }
 
-    if (autoDialTimerRef.current) {
-      window.clearInterval(autoDialTimerRef.current);
-      autoDialTimerRef.current = null;
-    }
-    setAutoDialCountdown(null);
-    setCallError(null);
+    callLaunchPendingRef.current = true;
+    setCallLaunchPending(true);
+    try {
+      if (autoDialTimerRef.current) {
+        window.clearInterval(autoDialTimerRef.current);
+        autoDialTimerRef.current = null;
+      }
+      setAutoDialCountdown(null);
+      setCallError(null);
 
-    const startedAt = Date.now();
-    const requestedLeadId =
-      input && Object.prototype.hasOwnProperty.call(input, "leadId")
-        ? input.leadId ?? null
-        : currentLeadId;
-    const requestedPhoneIndex =
-      input && Object.prototype.hasOwnProperty.call(input, "phoneIndex") &&
-      typeof input.phoneIndex === "number"
-        ? input.phoneIndex
-        : currentPhoneIndex;
-    const lead = requestedLeadId
-      ? leads.find((item) => item.id === requestedLeadId) ?? null
-      : null;
+      const startedAt = Date.now();
+      const requestedLeadId =
+        input && Object.prototype.hasOwnProperty.call(input, "leadId")
+          ? input.leadId ?? null
+          : currentLeadId;
+      const requestedPhoneIndex =
+        input && Object.prototype.hasOwnProperty.call(input, "phoneIndex") &&
+        typeof input.phoneIndex === "number"
+          ? input.phoneIndex
+          : currentPhoneIndex;
+      const lead = requestedLeadId
+        ? leads.find((item) => item.id === requestedLeadId) ?? null
+        : null;
 
-    if (requestedLeadId && !lead) {
-      throw new Error("Lead not found");
-    }
+      if (requestedLeadId && !lead) {
+        throw new Error("Lead not found");
+      }
 
-    const leadPhoneNumbers = lead?.phoneNumbers?.length
-      ? lead.phoneNumbers
-      : [lead?.phone ?? "", lead?.altPhone ?? ""].filter(Boolean);
-    const queueDialedNumber = (
-      input?.phone ??
-      leadPhoneNumbers[requestedPhoneIndex] ??
-      leadPhoneNumbers[currentPhoneIndex] ??
-      leadPhoneNumbers[0] ??
-      ""
-    ).trim();
-    if (!queueDialedNumber) {
-      throw new Error("Phone number not found");
-    }
+      const leadPhoneNumbers = lead?.phoneNumbers?.length
+        ? lead.phoneNumbers
+        : [lead?.phone ?? "", lead?.altPhone ?? ""].filter(Boolean);
+      const queueDialedNumber = (
+        input?.phone ??
+        leadPhoneNumbers[requestedPhoneIndex] ??
+        leadPhoneNumbers[currentPhoneIndex] ??
+        leadPhoneNumbers[0] ??
+        ""
+      ).trim();
+      if (!queueDialedNumber) {
+        throw new Error("Phone number not found");
+      }
 
-    const callLeadId = lead?.id ?? requestedLeadId ?? null;
-    const formattedDialNumber = formatDialNumberForSession(queueDialedNumber, {
-      callerId: null,
-      timezone: lead?.timezone ?? currentUser?.timezone,
-    });
-    if (!formattedDialNumber) {
-      await failCallSession("Enter a valid 10-digit US phone number.", startedAt, "session_start");
-      throw new Error("Enter a valid 10-digit US phone number.");
-    }
+      const callLeadId = lead?.id ?? requestedLeadId ?? null;
+      const formattedDialNumber = formatDialNumberForSession(queueDialedNumber, {
+        callerId: null,
+        timezone: lead?.timezone ?? currentUser?.timezone,
+      });
+      if (!formattedDialNumber) {
+        await failCallSession("Enter a valid 10-digit US phone number.", startedAt, "session_start");
+        throw new Error("Enter a valid 10-digit US phone number.");
+      }
 
-    const outboundDialNumber = formattedDialNumber;
-    const displayName = (input?.displayName ?? lead?.fullName ?? queueDialedNumber).trim();
-    const browserSoftphoneClient = voiceClientRef.current;
-    const browserCallingReady = Boolean(
-      browserSoftphoneClient && browserSoftphoneConfig.available,
-    );
-
-    if (!browserCallingReady) {
-      const message = "RingCentral browser calling is not ready. Reconnect RingCentral in Settings.";
-      await failCallSession(
-        message,
-        startedAt,
-        "session_unavailable",
+      const outboundDialNumber = formattedDialNumber;
+      const displayName = (input?.displayName ?? lead?.fullName ?? queueDialedNumber).trim();
+      const browserSoftphoneClient = voiceClientRef.current;
+      const browserCallingReady = Boolean(
+        browserSoftphoneClient && browserSoftphoneConfig.available,
       );
-      throw new Error(message);
-    }
 
-    if (!callLeadId && currentLeadId) {
-      lastAutoDialLeadIdRef.current = currentLeadId;
-    }
-
-    startRingbackTone();
-
-    if (callLeadId) {
-      try {
-        await persistQueueCursor(callLeadId, requestedPhoneIndex);
-      } catch (error) {
+      if (!browserCallingReady) {
+        const message =
+          "RingCentral browser calling is not ready. Reconnect RingCentral in Settings.";
         await failCallSession(
-          error instanceof Error && error.message.trim()
-            ? error.message
-            : "Unable to save the active queue cursor before dialing.",
+          message,
           startedAt,
-          "session_start",
+          "session_unavailable",
+        );
+        throw new Error(message);
+      }
+
+      if (!callLeadId && currentLeadId) {
+        lastAutoDialLeadIdRef.current = currentLeadId;
+      }
+
+      startRingbackTone();
+
+      if (callLeadId) {
+        try {
+          await persistQueueCursor(callLeadId, requestedPhoneIndex);
+        } catch (error) {
+          await failCallSession(
+            error instanceof Error && error.message.trim()
+              ? error.message
+              : "Unable to save the active queue cursor before dialing.",
+            startedAt,
+            "session_start",
+          );
+          throw error;
+        }
+      }
+
+      try {
+        const browserSession = await browserSoftphoneClient!.call(
+          outboundDialNumber,
+          browserSoftphoneConfig.callerId ?? undefined,
+        );
+        bindBrowserSoftphoneSession(browserSession, {
+          leadId: callLeadId,
+          dialedNumber: outboundDialNumber,
+          phoneIndex: requestedPhoneIndex,
+          startedAt,
+          callMode: "outgoing",
+          displayName,
+          transportMode: "browser_softphone",
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "";
+        const shouldAdvanceQueue = shouldAdvanceQueueAfterCallFailure(errorMessage);
+        await failCallSession(
+          errorMessage.trim() ? errorMessage : "Unable to place the RingCentral browser call.",
+          startedAt,
+          "invite",
+          shouldAdvanceQueue,
         );
         throw error;
       }
-    }
-
-    try {
-      const browserSession = await browserSoftphoneClient!.call(
-        outboundDialNumber,
-        browserSoftphoneConfig.callerId ?? undefined,
-      );
-      bindBrowserSoftphoneSession(browserSession, {
-        leadId: callLeadId,
-        dialedNumber: outboundDialNumber,
-        phoneIndex: requestedPhoneIndex,
-        startedAt,
-        callMode: "outgoing",
-        displayName,
-        transportMode: "browser_softphone",
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "";
-      const shouldAdvanceQueue = shouldAdvanceQueueAfterCallFailure(errorMessage);
-      await failCallSession(
-        errorMessage.trim() ? errorMessage : "Unable to place the RingCentral browser call.",
-        startedAt,
-        "invite",
-        shouldAdvanceQueue,
-      );
-      throw error;
+    } finally {
+      callLaunchPendingRef.current = false;
+      setCallLaunchPending(false);
     }
   };
 
@@ -2305,6 +2389,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         currentLeadId,
         activeCall,
         wrapUpLeadId,
+        callLaunchPending,
         autoDialEnabled,
         autoDialDelaySeconds,
         autoDialCountdown,
