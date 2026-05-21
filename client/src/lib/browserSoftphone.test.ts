@@ -11,6 +11,7 @@ test("buildBrowserSoftphoneConfig returns a ready config when workspace and SIP 
       callerId: "+17325939636",
       websocketUrl: "wss://sip.ringcentral.example/ws",
       sipDomain: "sip.ringcentral.example",
+      authorizationId: "instance-123",
       profileId: "profile-1",
       profileLabel: "Primary",
     },
@@ -25,6 +26,7 @@ test("buildBrowserSoftphoneConfig returns a ready config when workspace and SIP 
 
   assert.equal(config.available, true);
   assert.equal(config.websocketUrl, "wss://sip.ringcentral.example/ws");
+  assert.equal(config.authorizationId, "instance-123");
   assert.equal(config.authorizationUsername, "1001");
   assert.equal(config.displayName, "Rocco Sgro");
   assert.equal(config.dialPrefix, "9");

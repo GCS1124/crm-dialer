@@ -1,9 +1,14 @@
 import { getSupabaseClient } from "../lib/supabase";
-import { normalizeRingCentralStatus, type RingCentralIntegrationStatus } from "../lib/ringcentralStatus";
 import {
+  normalizeRingCentralStatus,
+  type RingCentralIntegrationStatus,
+} from "../lib/ringcentralStatus";
+import {
+  normalizeRingCentralBrowserVoiceSession,
   selectRingCentralRingOutFromNumber,
   type RingCentralPhoneNumber,
 } from "../lib/ringcentral";
+import type { VoiceProviderConfig } from "../types";
 
 export type { RingCentralIntegrationStatus } from "../lib/ringcentralStatus";
 
@@ -94,6 +99,12 @@ function normalizeRingCentralNumbers(numbers: RingCentralPhoneNumber[]) {
   }));
 }
 
+function normalizeRingCentralBrowserVoiceSessionResponse(
+  voice: Partial<VoiceProviderConfig> | null | undefined,
+) {
+  return normalizeRingCentralBrowserVoiceSession(voice);
+}
+
 function normalizeRingCentralIntegrationStatus(status: RingCentralIntegrationStatus) {
   const normalizedStatus = normalizeRingCentralStatus(status);
   return {
@@ -116,6 +127,16 @@ export async function loadRingCentralStatus() {
   });
 
   return normalizeRingCentralIntegrationStatus(response.status);
+}
+
+export async function loadRingCentralBrowserVoiceSession() {
+  const response = await invokeRingCentralFunction<{ voice: VoiceProviderConfig }>(
+    {
+      action: "browser-voice-session",
+    },
+  );
+
+  return normalizeRingCentralBrowserVoiceSessionResponse(response.voice);
 }
 
 export async function saveRingCentralRingOutNumber(ringOutNumber: string | null) {

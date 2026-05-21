@@ -2,6 +2,7 @@ import { supabase, hasSupabaseBrowserConfig, assertSupabaseConfigured } from "..
 import { isMissingSupabaseTableError } from "../lib/supabaseErrors";
 import { buildWorkspaceAnalytics } from "../lib/analytics";
 import { getInitials } from "../lib/utils";
+import { loadRingCentralBrowserVoiceSession as loadRingCentralBrowserVoiceSessionAction } from "./ringcentral";
 import type {
   CallAttemptFailureStage,
   CallDisposition,
@@ -32,11 +33,13 @@ import type {
 
 interface VoiceSessionResponse extends VoiceProviderConfig {
   sipUri?: string | null;
+  authorizationId?: string | null;
   authorizationUsername?: string | null;
   authorizationPassword?: string | null;
   dialPrefix?: string | null;
   displayName?: string | null;
   message?: string | null;
+  source: "profile" | "environment" | "ringcentral" | "unconfigured";
 }
 
 type ApiCallAttemptFailureStage = CallAttemptFailureStage;
@@ -221,6 +224,27 @@ function requireSupabaseClient() {
   }
 
   return supabase;
+}
+
+const ringCentralVoiceSessionCache = new Map<string, VoiceProviderConfig>();
+
+function getCachedRingCentralBrowserVoiceSession(userId: string) {
+  return ringCentralVoiceSessionCache.get(userId) ?? null;
+}
+
+function cacheRingCentralBrowserVoiceSession(userId: string, voice: VoiceProviderConfig) {
+  if (voice.available) {
+    ringCentralVoiceSessionCache.set(userId, voice);
+  }
+}
+
+export function clearRingCentralBrowserVoiceSessionCache(userId?: string | null) {
+  if (typeof userId === "string" && userId.trim()) {
+    ringCentralVoiceSessionCache.delete(userId);
+    return;
+  }
+
+  ringCentralVoiceSessionCache.clear();
 }
 
 function normalizeText(value: unknown, fallback = "") {
@@ -1304,7 +1328,20 @@ export async function loadWorkspace(currentUser: User, token?: string | null): P
   const { users, leads } = await fetchLeadsWorkspace();
   const { profiles, activeProfile, activeStoredProfile, selectionRequired } =
     await loadSipProfileState(currentUser, users);
-  const session: VoiceSessionResponse = activeStoredProfile
+  const cachedRingCentralVoiceSession = getCachedRingCentralBrowserVoiceSession(currentUser.id);
+  const ringCentralVoiceSession = cachedRingCentralVoiceSession ?? await loadRingCentralBrowserVoiceSessionAction().catch(() => null);
+  if (ringCentralVoiceSession?.available) {
+    cacheRingCentralBrowserVoiceSession(currentUser.id, ringCentralVoiceSession);
+  }
+  const session: VoiceSessionResponse = ringCentralVoiceSession?.available
+    ? {
+        ...ringCentralVoiceSession,
+        provider: "ringcentral",
+        source: "ringcentral",
+        displayName: ringCentralVoiceSession.displayName ?? currentUser.name,
+        authorizationId: ringCentralVoiceSession.authorizationId ?? null,
+      }
+    : activeStoredProfile
     ? {
         provider: "ringcentral",
         available: true,
@@ -1316,11 +1353,20 @@ export async function loadWorkspace(currentUser: User, token?: string | null): P
         profileId: activeStoredProfile.id,
         profileLabel: activeStoredProfile.label,
         sipUri: `sip:${activeStoredProfile.sipUsername}@${activeStoredProfile.sipDomain}`,
+        authorizationId: activeStoredProfile.id,
         authorizationUsername: activeStoredProfile.sipUsername,
         authorizationPassword: activeStoredProfile.sipPassword,
         dialPrefix: null,
         displayName: currentUser.name,
         message: null,
+      }
+    : ringCentralVoiceSession
+    ? {
+        ...ringCentralVoiceSession,
+        provider: "ringcentral",
+        source: ringCentralVoiceSession.source === "unconfigured" ? "unconfigured" : "ringcentral",
+        displayName: ringCentralVoiceSession.displayName ?? currentUser.name,
+        authorizationId: ringCentralVoiceSession.authorizationId ?? null,
       }
     : {
         provider: "ringcentral",
@@ -1332,6 +1378,7 @@ export async function loadWorkspace(currentUser: User, token?: string | null): P
         username: null,
         profileId: null,
         profileLabel: null,
+        authorizationId: null,
         message: "RingCentral calling is managed from Settings.",
       };
   const currentSessionUser = {

@@ -95,6 +95,49 @@ interface RingCentralStatus {
   activeTelephonyUpdatedAt: string | null;
 }
 
+interface RingCentralSipProvisionProxyRecord {
+  proxy?: string;
+  proxyTLS?: string;
+}
+
+interface RingCentralSipProvisionInfoRecord {
+  domain?: string;
+  sipDomain?: string;
+  outboundProxy?: string;
+  outboundProxyBackup?: string;
+  outboundProxies?: RingCentralSipProvisionProxyRecord[];
+  username?: string;
+  userName?: string;
+  password?: string;
+  authorizationId?: string;
+}
+
+interface RingCentralSipProvisionResponse {
+  sipInfo?: RingCentralSipProvisionInfoRecord[];
+  device?: {
+    id?: string | number | null;
+  } | null;
+}
+
+interface RingCentralBrowserVoiceSession {
+  provider: "ringcentral";
+  available: boolean;
+  source: "profile" | "environment" | "ringcentral" | "unconfigured";
+  callerId: string | null;
+  websocketUrl: string | null;
+  sipDomain: string | null;
+  username: string | null;
+  profileId: string | null;
+  profileLabel: string | null;
+  authorizationId: string | null;
+  sipUri: string | null;
+  authorizationUsername: string | null;
+  authorizationPassword: string | null;
+  dialPrefix: string | null;
+  displayName: string | null;
+  message: string | null;
+}
+
 const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() || "";
 const ringCentralServerUrl = Deno.env.get("RINGCENTRAL_SERVER_URL")?.trim() || "https://platform.ringcentral.com";
 const ringCentralClientId = Deno.env.get("RINGCENTRAL_CLIENT_ID")?.trim() || "";
@@ -184,8 +227,159 @@ function buildEmptyStatus(message = null): RingCentralStatus {
   };
 }
 
+function buildUnavailableBrowserVoiceSession(
+  message: string,
+  source: RingCentralBrowserVoiceSession["source"] = "unconfigured",
+): RingCentralBrowserVoiceSession {
+  return {
+    provider: "ringcentral",
+    available: false,
+    source,
+    callerId: null,
+    websocketUrl: null,
+    sipDomain: null,
+    username: null,
+    profileId: null,
+    profileLabel: null,
+    authorizationId: null,
+    sipUri: null,
+    authorizationUsername: null,
+    authorizationPassword: null,
+    dialPrefix: null,
+    displayName: null,
+    message,
+  };
+}
+
 function getRingCentralApiUrl(path: string) {
   return new URL(path, ringCentralServerUrl).toString();
+}
+
+function normalizeWssUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^wss?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `wss://${trimmed}`;
+}
+
+function readOutboundProxy(record: RingCentralSipProvisionInfoRecord) {
+  const direct = readText(record.outboundProxy);
+  if (direct) {
+    return direct;
+  }
+
+  for (const proxy of record.outboundProxies ?? []) {
+    const proxyTls = readText(proxy.proxyTLS);
+    if (proxyTls) {
+      return proxyTls;
+    }
+
+    const proxyPlain = readText(proxy.proxy);
+    if (proxyPlain) {
+      return proxyPlain;
+    }
+  }
+
+  return "";
+}
+
+function readOutboundProxyBackup(record: RingCentralSipProvisionInfoRecord, primaryProxy: string) {
+  const direct = readText(record.outboundProxyBackup);
+  if (direct) {
+    return direct;
+  }
+
+  const proxies = record.outboundProxies ?? [];
+  let primaryMatched = false;
+  for (const proxy of proxies) {
+    const candidate = readText(proxy.proxyTLS) || readText(proxy.proxy);
+    if (!candidate) {
+      continue;
+    }
+
+    if (!primaryMatched && candidate === primaryProxy) {
+      primaryMatched = true;
+      continue;
+    }
+
+    if (candidate !== primaryProxy) {
+      return candidate;
+    }
+  }
+
+  return primaryProxy;
+}
+
+function buildBrowserVoiceSession(
+  data: RingCentralSipProvisionResponse,
+  workspaceUser: AppUserRow,
+  selectedCallerId: string | null,
+): RingCentralBrowserVoiceSession {
+  const sipInfo = data.sipInfo?.[0] ?? null;
+  if (!sipInfo) {
+    return buildUnavailableBrowserVoiceSession("RingCentral browser calling is not ready.", "ringcentral");
+  }
+
+  const domain = readText(sipInfo.domain) || readText(sipInfo.sipDomain);
+  const username = readText(sipInfo.username) || readText(sipInfo.userName);
+  const password = readText(sipInfo.password);
+  const authorizationId = readText(sipInfo.authorizationId) || username || readText(data.device?.id);
+  const outboundProxy = readOutboundProxy(sipInfo);
+  const outboundProxyBackup = readOutboundProxyBackup(sipInfo, outboundProxy);
+  const websocketUrl = normalizeWssUrl(outboundProxy || outboundProxyBackup);
+  const displayName = workspaceUser.full_name.trim();
+  const callerId = normalizeNumber(selectedCallerId ?? "");
+  const available = Boolean(
+    websocketUrl &&
+    domain &&
+    username &&
+    password &&
+    authorizationId &&
+    displayName,
+  );
+
+  if (!available) {
+    return {
+      ...buildUnavailableBrowserVoiceSession(
+        "RingCentral browser calling is not ready.",
+        "ringcentral",
+      ),
+      callerId: callerId || null,
+      displayName,
+      authorizationId: authorizationId || null,
+      username: username || null,
+      sipDomain: domain || null,
+      websocketUrl: websocketUrl || null,
+      authorizationUsername: username || null,
+      authorizationPassword: password || null,
+      sipUri: username && domain ? `sip:${username}@${domain}` : null,
+    };
+  }
+
+  return {
+    provider: "ringcentral",
+    available: true,
+    source: "ringcentral",
+    callerId: callerId || null,
+    websocketUrl,
+    sipDomain: domain,
+    username,
+    profileId: null,
+    profileLabel: null,
+    authorizationId,
+    sipUri: `sip:${username}@${domain}`,
+    authorizationUsername: username,
+    authorizationPassword: password,
+    dialPrefix: null,
+    displayName,
+    message: null,
+  };
 }
 
 async function requireWorkspaceUser(request: Request) {
@@ -310,8 +504,54 @@ async function fetchRingCentralAccountInfo(accessToken: string) {
       ? extensionData.extensionNumber.trim()
       : typeof accountData.operator?.extensionNumber === "string" && accountData.operator.extensionNumber.trim()
         ? accountData.operator.extensionNumber.trim()
-        : null,
+    : null,
   };
+}
+
+async function fetchRingCentralSipProvision(
+  accessToken: string,
+  refreshAccessToken?: () => Promise<string>,
+) {
+  const request = async (token: string) => {
+    const response = await fetch(getRingCentralApiUrl("/restapi/v1.0/client-info/sip-provision"), {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sipInfo: [{ transport: "WSS" }],
+      }),
+    });
+
+    const text = await response.text();
+    const data = text ? (JSON.parse(text) as RingCentralSipProvisionResponse & {
+      message?: string;
+      error_description?: string;
+      errors?: Array<{ message?: string; description?: string; errorCode?: string; error_code?: string }>;
+    }) : {};
+
+    if (!response.ok) {
+      throw createRingCentralRequestError(
+        response.status,
+        data,
+        `RingCentral SIP provisioning failed (${response.status}).`,
+      );
+    }
+
+    return data as RingCentralSipProvisionResponse;
+  };
+
+  if (!refreshAccessToken) {
+    return await request(accessToken);
+  }
+
+  return await retryRingCentralRequestAfterRefresh({
+    accessToken,
+    refreshAccessToken,
+    request,
+  });
 }
 
 function buildRingOutExtensionTarget(mainNumber: string | null, extensionNumber: string | null) {
@@ -1268,6 +1508,40 @@ async function handleStatus(serviceClient: ReturnType<typeof createServiceClient
   return jsonResponse({ status });
 }
 
+async function handleBrowserVoiceSession(
+  serviceClient: ReturnType<typeof createServiceClient>,
+  workspaceUser: AppUserRow,
+) {
+  const integration = await loadIntegration(serviceClient, workspaceUser.id);
+  if (!integration) {
+    return jsonResponse({
+      voice: buildUnavailableBrowserVoiceSession("RingCentral is not connected.", "unconfigured"),
+    });
+  }
+
+  let activeRow = await refreshIntegrationIfNeeded(serviceClient, workspaceUser.id, integration);
+
+  try {
+    const sipProvision = await fetchRingCentralSipProvision(activeRow.access_token, async () => {
+      const refreshed = await refreshIntegration(serviceClient, activeRow);
+      activeRow = refreshed;
+      return refreshed.access_token;
+    });
+
+    const voice = buildBrowserVoiceSession(sipProvision, workspaceUser, activeRow.selected_caller_id);
+    return jsonResponse({ voice });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to load RingCentral browser calling.";
+    return jsonResponse({
+      voice: {
+        ...buildUnavailableBrowserVoiceSession(message, "ringcentral"),
+        callerId: activeRow.selected_caller_id ? normalizeNumber(activeRow.selected_caller_id) : null,
+        displayName: workspaceUser.full_name,
+      },
+    });
+  }
+}
+
 async function handleUpdateRingOutNumber(
   body: Record<string, unknown>,
   serviceClient: ReturnType<typeof createServiceClient>,
@@ -1535,6 +1809,10 @@ Deno.serve(async (request) => {
 
     if (action === "status") {
       return await handleStatus(serviceClient, workspaceUser);
+    }
+
+    if (action === "browser-voice-session") {
+      return await handleBrowserVoiceSession(serviceClient, workspaceUser);
     }
 
     if (action === "update-ringout-number") {

@@ -7,8 +7,9 @@ import {
   getRingOutProgressState,
   isRingCentralOutboundNumber,
   isRingCentralRingOutFromNumber,
+  normalizeRingCentralBrowserVoiceSession,
   selectRingCentralRingOutFromNumber,
-} from "./ringcentral";
+} from "./ringcentral.ts";
 
 test("builds the RingCentral PKCE authorization url", () => {
   const url = buildRingCentralAuthorizationUrl({
@@ -44,6 +45,26 @@ test("builds a RingOut payload with a forwarding number", () => {
       playPrompt: false,
     },
   );
+});
+
+test("normalizes a RingCentral browser voice session", () => {
+  const session = normalizeRingCentralBrowserVoiceSession({
+    available: true,
+    source: "ringcentral",
+    callerId: "+17325939636",
+    websocketUrl: "wss://sip.ringcentral.example/ws",
+    sipDomain: "sip.ringcentral.example",
+    username: "1001",
+    authorizationId: "instance-123",
+    authorizationUsername: "1001",
+    authorizationPassword: "secret",
+    displayName: "Rocco Sgro",
+  });
+
+  assert.equal(session.available, true);
+  assert.equal(session.source, "ringcentral");
+  assert.equal(session.authorizationId, "instance-123");
+  assert.equal(session.authorizationPassword, "secret");
 });
 
 test("preserves an app-only RingOut extension target", () => {

@@ -50,6 +50,9 @@ import {
   type RingCentralIntegrationStatus,
 } from "../services/ringcentral";
 import {
+  clearRingCentralBrowserVoiceSessionCache,
+} from "../services/workspace";
+import {
   createRingCentralSoftphone,
   type RingCentralSoftphoneClient,
   type RingCentralSoftphoneSession,
@@ -90,13 +93,14 @@ import type {
 interface VoiceSessionResponse {
   provider: "ringcentral";
   available: boolean;
-  source: "profile" | "environment" | "unconfigured";
+  source: "profile" | "environment" | "ringcentral" | "unconfigured";
   callerId: string | null;
   websocketUrl: string | null;
   sipDomain: string | null;
   username: string | null;
   profileId: string | null;
   profileLabel: string | null;
+  authorizationId?: string | null;
   sipUri?: string;
   authorizationUsername?: string;
   authorizationPassword?: string;
@@ -123,6 +127,8 @@ function buildVoiceConfigSignature(session: VoiceSessionResponse, displayName: s
     websocketUrl: session.websocketUrl,
     sipDomain: session.sipDomain,
     username: session.username,
+    callerId: session.callerId,
+    authorizationId: session.authorizationId ?? null,
     sipUri: session.sipUri,
     displayName,
   });
@@ -987,9 +993,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function cacheRingCentralStatus(status: RingCentralIntegrationStatus) {
+    const previousSelectedRingOutNumber = ringCentralStatusCacheRef.current?.status.selectedRingOutNumber ?? null;
     ringCentralStatusRequestGenerationRef.current += 1;
     ringCentralStatusCacheRef.current = { status, fetchedAt: Date.now() };
     ringCentralStatusRequestRef.current = null;
+    if (previousSelectedRingOutNumber !== status.selectedRingOutNumber) {
+      clearRingCentralBrowserVoiceSessionCache(currentUserRef.current?.id ?? null);
+    }
     setRingCentralStatus(status);
   }
 
@@ -1075,6 +1085,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   function cleanupSession() {
     stopRingbackTone();
     invalidateRingCentralStatusCache();
+    clearRingCentralBrowserVoiceSessionCache(currentUserRef.current?.id ?? null);
     setAuthToken(null);
     setAuthRefreshToken(null);
     setCurrentUser(null);
@@ -1559,6 +1570,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           provider: browserSoftphoneConfig.source,
           websocketUrl: browserSoftphoneConfig.websocketUrl,
           sipDomain: browserSoftphoneConfig.sipDomain,
+          callerId: browserSoftphoneConfig.callerId,
+          authorizationId: browserSoftphoneConfig.authorizationId,
           authorizationUsername: browserSoftphoneConfig.authorizationUsername,
           displayName: browserSoftphoneConfig.displayName,
           profileId: browserSoftphoneConfig.profileId,
@@ -1581,6 +1594,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
   }, [
     browserSoftphoneConfig.available,
+    browserSoftphoneConfig.callerId,
+    browserSoftphoneConfig.authorizationId,
     browserSoftphoneConfig.authorizationPassword,
     browserSoftphoneConfig.authorizationUsername,
     browserSoftphoneConfig.displayName,
@@ -2479,6 +2494,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     await disconnectRingCentralAction();
     invalidateRingCentralStatusCache();
+    clearRingCentralBrowserVoiceSessionCache(currentUserRef.current?.id ?? null);
     setRingCentralStatus(emptyRingCentralStatus);
   };
 
@@ -2489,6 +2505,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const status = await saveRingCentralRingOutNumberAction(ringOutNumber);
     cacheRingCentralStatus(status);
+    await refreshWorkspace();
   };
 
   const activateSipProfile = async (profileId: string) => {

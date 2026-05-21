@@ -382,13 +382,14 @@ export interface UpdateSipProfileInput {
 export interface VoiceProviderConfig {
   provider: VoiceProviderName;
   available: boolean;
-  source: "profile" | "environment" | "unconfigured";
+  source: "profile" | "environment" | "ringcentral" | "unconfigured";
   callerId: string | null;
   websocketUrl: string | null;
   sipDomain: string | null;
   username: string | null;
   profileId: string | null;
   profileLabel: string | null;
+  authorizationId?: string | null;
   sipUri?: string | null;
   authorizationUsername?: string | null;
   authorizationPassword?: string | null;

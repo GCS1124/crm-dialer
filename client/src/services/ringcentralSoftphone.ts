@@ -71,10 +71,11 @@ export function buildWebPhoneSipInfo(config: BrowserSoftphoneConfig): WebPhoneSi
   const proxy = normalizeProxyUrl(config.websocketUrl);
   const sipDomain = normalizeText(config.sipDomain) || proxy;
   const authUsername = normalizeText(config.authorizationUsername);
+  const authorizationId = normalizeText(config.authorizationId) || authUsername;
   const password = normalizeText(config.authorizationPassword);
 
   return {
-    authorizationId: authUsername,
+    authorizationId,
     domain: sipDomain,
     outboundProxy: proxy,
     outboundProxyBackup: proxy,

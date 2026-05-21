@@ -10,6 +10,7 @@ test("buildWebPhoneSipInfo converts the browser config into WebPhone sipInfo", (
     callerId: "+17325939636",
     websocketUrl: "wss://sip.ringcentral.example/ws",
     sipDomain: "sip.ringcentral.example",
+    authorizationId: "instance-123",
     sipUri: "sip:1001@sip.ringcentral.example",
     authorizationUsername: "1001",
     authorizationPassword: "secret",
@@ -20,7 +21,7 @@ test("buildWebPhoneSipInfo converts the browser config into WebPhone sipInfo", (
     message: null,
   });
 
-  assert.equal(sipInfo.authorizationId, "1001");
+  assert.equal(sipInfo.authorizationId, "instance-123");
   assert.equal(sipInfo.domain, "sip.ringcentral.example");
   assert.equal(sipInfo.outboundProxy, "sip.ringcentral.example");
   assert.equal(sipInfo.outboundProxyBackup, "sip.ringcentral.example");

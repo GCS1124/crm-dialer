@@ -1,3 +1,5 @@
+import type { VoiceProviderConfig } from "../types";
+
 const DEFAULT_RINGCENTRAL_SERVER_URL = "https://platform.ringcentral.com";
 const RINGCENTRAL_AUTHORIZE_PATH = "/restapi/oauth/authorize";
 
@@ -23,6 +25,8 @@ export interface RingOutRequestPayload {
   playPrompt: boolean;
 }
 
+export interface RingCentralBrowserVoiceSession extends VoiceProviderConfig {}
+
 export interface RingOutStatusSnapshot {
   callStatus?: string | null;
   callerStatus?: string | null;
@@ -38,6 +42,14 @@ export interface RingOutProgressState {
 
 function normalizePhoneNumber(value: string) {
   return value.replace(/[^\d]/g, "");
+}
+
+function normalizeVoiceSource(value: unknown): VoiceProviderConfig["source"] {
+  if (value === "profile" || value === "environment" || value === "ringcentral") {
+    return value;
+  }
+
+  return "unconfigured";
 }
 
 function formatE164PhoneNumber(value: string) {
@@ -160,6 +172,29 @@ export function buildRingCentralAuthorizationUrl(input: {
   url.searchParams.set("code_challenge", input.codeChallenge);
   url.searchParams.set("code_challenge_method", "S256");
   return url.toString();
+}
+
+export function normalizeRingCentralBrowserVoiceSession(
+  session: Partial<RingCentralBrowserVoiceSession> | null | undefined,
+): RingCentralBrowserVoiceSession {
+  return {
+    provider: "ringcentral",
+    available: session?.available ?? false,
+    source: normalizeVoiceSource(session?.source),
+    callerId: session?.callerId ?? null,
+    websocketUrl: session?.websocketUrl ?? null,
+    sipDomain: session?.sipDomain ?? null,
+    username: session?.username ?? null,
+    profileId: session?.profileId ?? null,
+    profileLabel: session?.profileLabel ?? null,
+    authorizationId: session?.authorizationId ?? null,
+    sipUri: session?.sipUri ?? null,
+    authorizationUsername: session?.authorizationUsername ?? null,
+    authorizationPassword: session?.authorizationPassword ?? null,
+    dialPrefix: session?.dialPrefix ?? null,
+    displayName: session?.displayName ?? null,
+    message: session?.message ?? null,
+  };
 }
 
 export async function createRingCentralPkcePair() {

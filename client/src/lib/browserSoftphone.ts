@@ -15,6 +15,7 @@ export interface BrowserSoftphoneConfig {
   websocketUrl: string | null;
   sipDomain: string | null;
   sipUri: string | null;
+  authorizationId: string | null;
   authorizationUsername: string | null;
   authorizationPassword: string | null;
   dialPrefix: string | null;
@@ -26,7 +27,14 @@ export interface BrowserSoftphoneConfig {
 
 type BrowserSoftphoneVoiceConfig = Pick<
   VoiceProviderConfig,
-  "available" | "source" | "callerId" | "websocketUrl" | "sipDomain" | "profileId" | "profileLabel"
+  | "available"
+  | "source"
+  | "callerId"
+  | "websocketUrl"
+  | "sipDomain"
+  | "profileId"
+  | "profileLabel"
+  | "authorizationId"
 >;
 
 function normalizeText(value: string | null | undefined) {
@@ -48,6 +56,7 @@ export function buildBrowserSoftphoneConfig(
 ): BrowserSoftphoneConfig {
   const websocketUrl = normalizeText(voice.websocketUrl);
   const sipDomain = normalizeText(voice.sipDomain);
+  const authorizationId = normalizeText(voice.authorizationId) ?? normalizeText(session.authorizationUsername);
   const authorizationUsername = normalizeText(session.authorizationUsername);
   const authorizationPassword =
     typeof session.authorizationPassword === "string" && session.authorizationPassword.length > 0
@@ -61,6 +70,7 @@ export function buildBrowserSoftphoneConfig(
     Boolean(voice.available) &&
     hasText(websocketUrl) &&
     hasText(sipDomain) &&
+    hasText(authorizationId) &&
     hasText(authorizationUsername) &&
     hasText(session.authorizationPassword) &&
     hasText(displayName);
@@ -72,6 +82,7 @@ export function buildBrowserSoftphoneConfig(
     websocketUrl,
     sipDomain,
     sipUri,
+    authorizationId,
     authorizationUsername,
     authorizationPassword,
     dialPrefix,
