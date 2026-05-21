@@ -1,4 +1,5 @@
 import { supabase, hasSupabaseBrowserConfig, assertSupabaseConfigured } from "../lib/supabase";
+import { isMissingSupabaseTableError } from "../lib/supabaseErrors";
 import { buildWorkspaceAnalytics } from "../lib/analytics";
 import { getInitials } from "../lib/utils";
 import type {
@@ -1224,7 +1225,7 @@ async function fetchLeadsWorkspace() {
 
 async function loadSipProfileState(currentUser: User, users: User[]) {
   const client = requireSupabaseClient();
-  const [profileRows, preferenceRows] = await Promise.all([
+  const [profileRowsResult, preferenceRowsResult] = await Promise.allSettled([
     fetchSipProfiles(),
     client
       .from("user_sip_preferences")
@@ -1233,8 +1234,28 @@ async function loadSipProfileState(currentUser: User, users: User[]) {
       .maybeSingle(),
   ]);
 
+  if (
+    profileRowsResult.status === "rejected" &&
+    !isMissingSupabaseTableError(profileRowsResult.reason)
+  ) {
+    throw profileRowsResult.reason;
+  }
+
+  if (
+    preferenceRowsResult.status === "rejected" &&
+    !isMissingSupabaseTableError(preferenceRowsResult.reason)
+  ) {
+    throw preferenceRowsResult.reason;
+  }
+
+  const profileRows =
+    profileRowsResult.status === "fulfilled" ? profileRowsResult.value : [];
+  const preferenceRows =
+    preferenceRowsResult.status === "fulfilled" ? preferenceRowsResult.value : null;
+
   const usersById = new Map(users.map((user) => [user.id, user]));
-  const activeProfileId = (preferenceRows.data as DbUserSipPreferenceRow | null)?.active_sip_profile_id ?? null;
+  const activeProfileId =
+    (preferenceRows?.data as DbUserSipPreferenceRow | null)?.active_sip_profile_id ?? null;
   const activeRow = activeProfileId ? profileRows.find((profile) => profile.id === activeProfileId) ?? null : null;
   const activeProfile = activeRow ? mapSipProfileRow(activeRow, activeProfileId, usersById) : null;
   const activeStoredProfile = activeRow ? mapStoredSipProfile(activeRow, activeProfileId, usersById) : null;
