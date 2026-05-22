@@ -125,3 +125,69 @@ values
     'Callback scheduled',
     'Follow-up meeting scheduled for later today.'
   );
+
+insert into public.employee_attendance_days (
+  employee_id,
+  activity_date,
+  timezone,
+  status,
+  checked_in_at,
+  checked_out_at,
+  break_started_at,
+  break_type,
+  active_session_seconds,
+  active_break_seconds,
+  has_checked_in,
+  break_usage_counts,
+  break_durations_seconds,
+  last_updated_at
+)
+values
+  (
+    '33333333-3333-3333-3333-333333333333',
+    date '2026-05-20',
+    'Asia/Kolkata',
+    'checked_out',
+    timestamptz '2026-05-20 09:05:00+05:30',
+    timestamptz '2026-05-20 17:46:00+05:30',
+    null,
+    null,
+    31260,
+    0,
+    true,
+    '{"freshen_up":0,"lunch":0,"tea":0,"meeting_training":0}'::jsonb,
+    '{"freshen_up":0,"lunch":0,"tea":0,"meeting_training":0}'::jsonb,
+    timestamptz '2026-05-20 17:46:00+05:30'
+  ),
+  (
+    '33333333-3333-3333-3333-333333333333',
+    date '2026-05-21',
+    'Asia/Kolkata',
+    'on_break',
+    timestamptz '2026-05-21 09:12:00+05:30',
+    null,
+    timestamptz '2026-05-21 12:15:00+05:30',
+    'lunch',
+    11700,
+    900,
+    true,
+    '{"freshen_up":0,"lunch":1,"tea":0,"meeting_training":0}'::jsonb,
+    '{"freshen_up":0,"lunch":900,"tea":0,"meeting_training":0}'::jsonb,
+    timestamptz '2026-05-21 12:15:00+05:30'
+  ),
+  (
+    '33333333-3333-3333-3333-333333333333',
+    date '2026-05-22',
+    'Asia/Kolkata',
+    'checked_out',
+    timestamptz '2026-05-22 19:27:00+05:30',
+    timestamptz '2026-05-22 23:34:00+05:30',
+    null,
+    null,
+    14820,
+    0,
+    true,
+    '{"freshen_up":0,"lunch":0,"tea":0,"meeting_training":0}'::jsonb,
+    '{"freshen_up":0,"lunch":0,"tea":0,"meeting_training":0}'::jsonb,
+    timestamptz '2026-05-22 23:34:00+05:30'
+  );

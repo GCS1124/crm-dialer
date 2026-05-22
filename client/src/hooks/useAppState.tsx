@@ -30,6 +30,7 @@ import {
   formatDialNumberForSession,
 } from "../lib/softphoneDialing";
 import {
+  buildEmployeeAttendanceSnapshot,
   checkIn as createCheckedInTimeTrackingState,
   checkOut as createCheckedOutTimeTrackingState,
   createInitialTimeTrackingState,
@@ -42,6 +43,7 @@ import { canMakeCall, getCallAccessMessage } from "../lib/callUi.ts";
 import type { EmployeeActivityCalendarResponse } from "../lib/employeeActivityCalendar.ts";
 import { supabase } from "../lib/supabase";
 import { toast } from "sonner";
+import { upsertEmployeeAttendanceSnapshot } from "../services/attendance";
 import {
   beginRingCentralConnection as beginRingCentralConnectionAction,
   disconnectRingCentral as disconnectRingCentralAction,
@@ -515,10 +517,50 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     null,
   );
   const ringCentralStatusRequestGenerationRef = useRef(0);
+  const attendancePersistSignatureRef = useRef<string | null>(null);
+  const attendancePersistInFlightRef = useRef<string | null>(null);
 
   useEffect(() => {
     setTimeTracking((current) => normalizeTimeTrackingState(current));
   }, [setTimeTracking, timeTracking, timeTrackingStorageKey]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      attendancePersistSignatureRef.current = null;
+      attendancePersistInFlightRef.current = null;
+      return;
+    }
+
+    const snapshot = buildEmployeeAttendanceSnapshot(timeTracking, {
+      employeeId: currentUser.id,
+      timezone: currentUser.timezone,
+      nowIso: new Date().toISOString(),
+    });
+
+    if (!snapshot.hasCheckedIn) {
+      return;
+    }
+
+    const signature = JSON.stringify(snapshot);
+    if (
+      attendancePersistSignatureRef.current === signature ||
+      attendancePersistInFlightRef.current === signature
+    ) {
+      return;
+    }
+
+    attendancePersistInFlightRef.current = signature;
+    void upsertEmployeeAttendanceSnapshot(snapshot, authToken)
+      .then(() => {
+        attendancePersistSignatureRef.current = signature;
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (attendancePersistInFlightRef.current === signature) {
+          attendancePersistInFlightRef.current = null;
+        }
+      });
+  }, [authToken, currentUser?.id, currentUser?.timezone, currentUser, timeTracking]);
 
   if (!ringbackToneRef.current) {
     ringbackToneRef.current = createBrowserRingbackToneController();

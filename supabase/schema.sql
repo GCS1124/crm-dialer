@@ -111,6 +111,27 @@ create table if not exists public.audit_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.employee_attendance_days (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.app_users(id) on delete cascade,
+  activity_date date not null,
+  timezone text not null default 'UTC',
+  status text not null check (status in ('checked_out', 'checked_in', 'on_break')),
+  checked_in_at timestamptz,
+  checked_out_at timestamptz,
+  break_started_at timestamptz,
+  break_type text check (break_type is null or break_type in ('freshen_up', 'lunch', 'tea', 'meeting_training')),
+  active_session_seconds integer not null default 0,
+  active_break_seconds integer not null default 0,
+  has_checked_in boolean not null default false,
+  break_usage_counts jsonb not null default '{"freshen_up":0,"lunch":0,"tea":0,"meeting_training":0}'::jsonb,
+  break_durations_seconds jsonb not null default '{"freshen_up":0,"lunch":0,"tea":0,"meeting_training":0}'::jsonb,
+  last_updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (employee_id, activity_date)
+);
+
 create table if not exists public.ringcentral_integrations (
   app_user_id uuid primary key references public.app_users(id) on delete cascade,
   account_id text,
@@ -137,6 +158,8 @@ create index if not exists leads_status_idx on public.leads (status);
 create index if not exists leads_callback_time_idx on public.leads (callback_time);
 create index if not exists call_logs_agent_id_idx on public.call_logs (agent_id, created_at desc);
 create index if not exists callbacks_owner_idx on public.callbacks (owner_id, scheduled_for);
+create index if not exists employee_attendance_days_employee_date_idx
+  on public.employee_attendance_days (employee_id, activity_date desc);
 
 create or replace view public.agent_daily_metrics as
 select
