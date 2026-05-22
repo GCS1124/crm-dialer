@@ -1,6 +1,9 @@
 import {
+  CalendarClock,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Info,
   Search,
   Users2,
 } from "lucide-react";
@@ -97,7 +100,7 @@ function LoadingGrid() {
       {Array.from({ length: 14 }, (_, index) => (
         <div
           key={index}
-          className="min-h-[132px] animate-pulse rounded-[18px] border border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-900/40"
+          className="min-h-[128px] animate-pulse rounded-[22px] border border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-900/40"
         />
       ))}
     </div>
@@ -125,12 +128,10 @@ function DayDetailsPanel({
   employeeName,
   day,
   monthLabel,
-  filterLabel,
 }: {
   employeeName: string;
   day: EmployeeActivityCalendarDay | null;
   monthLabel: string;
-  filterLabel: string;
 }) {
   if (!day) {
     return (
@@ -141,7 +142,7 @@ function DayDetailsPanel({
           description={
             employeeName
               ? `Pick a day in ${monthLabel} to see attendance details and call records.`
-              : "Use the employee selector on the left to load a monthly attendance calendar."
+              : "Use the employee selector on the left to load a monthly calendar."
           }
         />
       </div>
@@ -149,7 +150,6 @@ function DayDetailsPanel({
   }
 
   const attendance = day.attendance;
-  const totalBreaks = attendance.breakCount;
 
   return (
     <div className="space-y-4 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
@@ -165,21 +165,40 @@ function DayDetailsPanel({
               year: "numeric",
             }).format(new Date(`${day.date}T12:00:00.000Z`))}
           </h3>
-          <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
-            {employeeName} · {filterLabel}
-          </p>
+          <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">{employeeName}</p>
         </div>
 
-        <Badge className={cn("px-3 py-1.5 text-[11px] font-semibold", attendance.statusTone)}>
-          {attendance.statusLabel}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge className={cn("px-3 py-1.5 text-[11px] font-semibold", attendance.statusTone)}>
+            {attendance.statusLabel}
+          </Badge>
+          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900/50">
+            <Info size={14} />
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <SummaryMetric label="Check-in / Check-out" value={`${attendance.checkInLabel} · ${attendance.checkOutLabel}`} tone="bg-slate-50 text-slate-900 border-slate-200 dark:bg-slate-900/40 dark:text-white dark:border-slate-800" />
-        <SummaryMetric label="Working hours" value={attendance.workingHoursLabel} tone="bg-slate-50 text-slate-900 border-slate-200 dark:bg-slate-900/40 dark:text-white dark:border-slate-800" />
-        <SummaryMetric label="Breaks" value={`${attendance.breaksLabel}`} tone="bg-slate-50 text-slate-900 border-slate-200 dark:bg-slate-900/40 dark:text-white dark:border-slate-800" />
-        <SummaryMetric label="Status" value={attendance.statusLabel} tone="bg-slate-50 text-slate-900 border-slate-200 dark:bg-slate-900/40 dark:text-white dark:border-slate-800" />
+        <SummaryMetric
+          label="Check-in / Check-out"
+          value={`${attendance.checkInLabel} - ${attendance.checkOutLabel}`}
+          tone="bg-slate-50 text-slate-900 border-slate-200 dark:bg-slate-900/40 dark:text-white dark:border-slate-800"
+        />
+        <SummaryMetric
+          label="Working hours"
+          value={attendance.workingHoursLabel}
+          tone="bg-slate-50 text-slate-900 border-slate-200 dark:bg-slate-900/40 dark:text-white dark:border-slate-800"
+        />
+        <SummaryMetric
+          label="Breaks"
+          value={attendance.breaksLabel}
+          tone="bg-slate-50 text-slate-900 border-slate-200 dark:bg-slate-900/40 dark:text-white dark:border-slate-800"
+        />
+        <SummaryMetric
+          label="Status"
+          value={attendance.statusLabel}
+          tone="bg-slate-50 text-slate-900 border-slate-200 dark:bg-slate-900/40 dark:text-white dark:border-slate-800"
+        />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -319,7 +338,6 @@ export function EmployeeActivityCalendar({ employees, loadCalendar }: EmployeeAc
   );
   const monthKey = useMemo(() => monthKeyForDate(monthCursor), [monthCursor]);
   const monthLabel = useMemo(() => monthLabelForDate(monthCursor), [monthCursor]);
-  const selectedFilterLabel = filterOptions.find((option) => option.value === summaryFilter)?.label ?? "All";
 
   useEffect(() => {
     if (!selectedEmployeeId) {
@@ -386,9 +404,9 @@ export function EmployeeActivityCalendar({ employees, loadCalendar }: EmployeeAc
     [calendar, selectedDate],
   );
   const hasMonthActivityValue = calendar?.days.some((day) => hasMonthActivity(day)) ?? false;
-  const filteredActivityCount = calendar?.days.filter((day) => matchesFilter(day, summaryFilter)).length ?? 0;
   const leadingBlankCount = getMonthGridStart(monthCursor).getDay();
-  const totalCalendarDays = calendar?.days.length ?? new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
+  const totalCalendarDays =
+    calendar?.days.length ?? new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
   const monthGridCells = leadingBlankCount + totalCalendarDays;
   const trailingBlankCount = (7 - (monthGridCells % 7)) % 7;
 
@@ -411,76 +429,70 @@ export function EmployeeActivityCalendar({ employees, loadCalendar }: EmployeeAc
 
   return (
     <Card className="space-y-5 p-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <p className="crm-section-label">Employee Calendar</p>
-        {selectedEmployee ? (
-          <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
-            {selectedEmployee.name}
-          </span>
-        ) : null}
-        <span className="ml-auto text-[12px] text-slate-500 dark:text-slate-400">
-          {selectedEmployee ? monthLabel : "Select an employee to begin"}
-        </span>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.85fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.9fr)]">
         <div className="space-y-4">
           <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))
-                  }
+                <button
+                  type="button"
+                  onClick={() => setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
                   aria-label="Previous month"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
                   <ChevronLeft size={16} />
-                </Button>
+                </button>
 
-                <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/40">
-                  <select
-                    value={monthCursor.getMonth()}
-                    onChange={(event) =>
-                      setMonthCursor((current) => new Date(current.getFullYear(), Number(event.target.value), 1))
-                    }
-                    className="bg-transparent text-[13px] font-medium text-slate-900 outline-none dark:text-white"
-                    aria-label="Month"
-                  >
-                    {monthOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                  <CalendarClock size={15} className="text-slate-400" />
 
-                  <select
-                    value={monthCursor.getFullYear()}
-                    onChange={(event) =>
-                      setMonthCursor((current) => new Date(Number(event.target.value), current.getMonth(), 1))
-                    }
-                    className="bg-transparent text-[13px] font-medium text-slate-900 outline-none dark:text-white"
-                    aria-label="Year"
-                  >
-                    {yearOptions.map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <select
+                      value={monthCursor.getMonth()}
+                      onChange={(event) =>
+                        setMonthCursor((current) => new Date(current.getFullYear(), Number(event.target.value), 1))
+                      }
+                      className="appearance-none bg-transparent pr-5 text-[13px] font-medium text-slate-900 outline-none dark:text-white"
+                      aria-label="Month"
+                    >
+                      {monthOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none text-slate-400" />
+                  </div>
+
+                  <div className="h-5 w-px bg-slate-200 dark:bg-slate-800" />
+
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <select
+                      value={monthCursor.getFullYear()}
+                      onChange={(event) =>
+                        setMonthCursor((current) => new Date(Number(event.target.value), current.getMonth(), 1))
+                      }
+                      className="appearance-none bg-transparent pr-5 text-[13px] font-medium text-slate-900 outline-none dark:text-white"
+                      aria-label="Year"
+                    >
+                      {yearOptions.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none text-slate-400" />
+                  </div>
                 </div>
 
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))
-                  }
+                <button
+                  type="button"
+                  onClick={() => setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
                   aria-label="Next month"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
                   <ChevronRight size={16} />
-                </Button>
+                </button>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -504,95 +516,73 @@ export function EmployeeActivityCalendar({ employees, loadCalendar }: EmployeeAc
                 })}
               </div>
             </div>
+          </div>
 
-            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-              <div className="space-y-3">
-                <div className="relative">
-                  <Search
-                    size={16}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search employee by name, team, or title"
-                    className="crm-input py-3 pl-10"
-                  />
-                </div>
+          <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                Employee selector
+              </p>
+              {selectedEmployee ? (
+                <Badge className="bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300">
+                  {selectedEmployee.role.replace("_", " ")}
+                </Badge>
+              ) : null}
+            </div>
 
-                <div className="max-h-64 overflow-y-auto rounded-[22px] border border-slate-200 bg-slate-50/70 p-2 dark:border-slate-800 dark:bg-slate-900/30">
-                  {visibleEmployees.length ? (
-                    visibleEmployees.map((employee) => {
-                      const isSelected = employee.id === selectedEmployeeId;
-                      return (
-                        <button
-                          key={employee.id}
-                          type="button"
-                          onClick={() => selectEmployee(employee.id)}
-                          className={cn(
-                            "flex w-full items-center justify-between gap-3 rounded-[16px] border px-3 py-3 text-left transition",
-                            isSelected
-                              ? "border-sky-300 bg-sky-50 dark:border-sky-400/40 dark:bg-sky-950/20"
-                              : "border-transparent hover:border-slate-200 hover:bg-white dark:hover:border-slate-800 dark:hover:bg-slate-900/60",
-                          )}
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-semibold text-slate-900 dark:text-white">
-                              {employee.name}
-                            </p>
-                            <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                              {employee.team} · {employee.title}
-                            </p>
-                          </div>
-
-                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            {employee.role.replace("_", " ")}
-                          </span>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-[14px] border border-dashed border-slate-200 px-4 py-8 text-center text-[12px] text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                      No employees match your search.
-                    </div>
-                  )}
-                </div>
+            <div className="mt-3 space-y-3">
+              <div className="relative">
+                <Search
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search employee by name, team, or title"
+                  className="crm-input py-3 pl-10"
+                />
               </div>
 
-              <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/30">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Month
-                    </p>
-                    <p className="mt-1 text-[18px] font-semibold text-slate-900 dark:text-white">
-                      {monthLabel}
-                    </p>
-                  </div>
-                  {selectedEmployee ? (
-                    <Badge className="bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300">
-                      {selectedEmployee.role.replace("_", " ")}
-                    </Badge>
-                  ) : null}
-                </div>
+              <div className="max-h-64 overflow-y-auto rounded-[22px] border border-slate-200 bg-slate-50/70 p-2 dark:border-slate-800 dark:bg-slate-900/30">
+                {visibleEmployees.length ? (
+                  visibleEmployees.map((employee) => {
+                    const isSelected = employee.id === selectedEmployeeId;
+                    return (
+                      <button
+                        key={employee.id}
+                        type="button"
+                        onClick={() => selectEmployee(employee.id)}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 rounded-[16px] border px-3 py-3 text-left transition",
+                          isSelected
+                            ? "border-sky-300 bg-sky-50 dark:border-sky-400/40 dark:bg-sky-950/20"
+                            : "border-transparent hover:border-slate-200 hover:bg-white dark:hover:border-slate-800 dark:hover:bg-slate-900/60",
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold text-slate-900 dark:text-white">
+                            {employee.name}
+                          </p>
+                          <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                            {employee.team} - {employee.title}
+                          </p>
+                        </div>
 
-                <div className="mt-4 grid gap-3">
-                  <SummaryMetric
-                    label="Visible days"
-                    value={`${calendar?.days.length ?? 0}`}
-                    tone="bg-white text-slate-900 border-slate-200 dark:bg-slate-950 dark:text-white dark:border-slate-800"
-                  />
-                  <SummaryMetric
-                    label="Highlighted"
-                    value={`${filteredActivityCount}`}
-                    tone="bg-white text-slate-900 border-slate-200 dark:bg-slate-950 dark:text-white dark:border-slate-800"
-                  />
-                </div>
+                        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          {employee.role.replace("_", " ")}
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-[14px] border border-dashed border-slate-200 px-4 py-8 text-center text-[12px] text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    No employees match your search.
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          <StatusLegend />
 
           {error ? (
             <AlertBanner
@@ -611,13 +601,12 @@ export function EmployeeActivityCalendar({ employees, loadCalendar }: EmployeeAc
             <EmptyState
               icon={Users2}
               title="Please select an employee to view calendar activity."
-              description="Use the employee search above to load the monthly attendance calendar."
+              description="Use the employee search above to load the monthly calendar."
             />
           ) : loading ? (
             <Card className="space-y-4 p-5">
               <div>
-                <p className="crm-section-label">Loading</p>
-                <h3 className="mt-2 text-[16px] font-semibold text-slate-900 dark:text-white">
+                <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">
                   Loading {selectedEmployee.name}'s {monthLabel} activity
                 </h3>
               </div>
@@ -643,7 +632,7 @@ export function EmployeeActivityCalendar({ employees, loadCalendar }: EmployeeAc
                 {Array.from({ length: leadingBlankCount }, (_, index) => (
                   <div
                     key={`leading-${index}`}
-                    className="min-h-[140px] rounded-[18px] border border-dashed border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/40"
+                    className="min-h-[122px] rounded-[22px] border border-dashed border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/40"
                   />
                 ))}
                 {calendar.days.map((day) => (
@@ -659,29 +648,18 @@ export function EmployeeActivityCalendar({ employees, loadCalendar }: EmployeeAc
                 {Array.from({ length: trailingBlankCount }, (_, index) => (
                   <div
                     key={`trailing-${index}`}
-                    className="min-h-[140px] rounded-[18px] border border-dashed border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/40"
+                    className="min-h-[122px] rounded-[22px] border border-dashed border-slate-200 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/40"
                   />
                 ))}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-[12px] text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-                <p>
-                  Showing <span className="font-semibold text-slate-700 dark:text-slate-200">{selectedFilterLabel}</span> for{" "}
-                  {selectedEmployee.name}.
-                </p>
-                <p>Click a day to review attendance and call records.</p>
-              </div>
+              <StatusLegend />
             </div>
           ) : null}
         </div>
 
         <aside className="xl:sticky xl:top-6 xl:self-start">
-          <DayDetailsPanel
-            employeeName={selectedEmployee?.name ?? ""}
-            day={selectedDay}
-            monthLabel={monthLabel}
-            filterLabel={selectedFilterLabel}
-          />
+          <DayDetailsPanel employeeName={selectedEmployee?.name ?? ""} day={selectedDay} monthLabel={monthLabel} />
         </aside>
       </div>
     </Card>
