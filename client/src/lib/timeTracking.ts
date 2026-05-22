@@ -1,4 +1,4 @@
-import type { BreakType, TimeTrackingState } from "../types/index.ts";
+import type { BreakType, EmployeeAttendanceSnapshot, TimeTrackingState } from "../types/index.ts";
 
 const BREAK_TYPES: BreakType[] = ["freshen_up", "lunch", "tea", "meeting_training"];
 
@@ -62,6 +62,39 @@ function formatElapsedDurationSeconds(totalSeconds: number) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+function formatHoursMinutes(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+  if (hours <= 0) {
+    return `${minutes}m`;
+  }
+
+  return `${hours}h ${minutes}m`;
+}
+
+function formatClockTime(value: string | null, timeZone: string) {
+  if (!value) {
+    return "--";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function getTimeZoneDateKey(value: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
 function normalizeBreakRecord(record?: Partial<Record<BreakType, number>> | null) {
   const normalized = createEmptyBreakRecord();
 
@@ -109,6 +142,7 @@ export function createInitialTimeTrackingState(nowIso = new Date().toISOString()
   return {
     status: "checked_out",
     checkedInAt: null,
+    sessionStartedAt: null,
     breakStartedAt: null,
     breakType: null,
     activeSessionSeconds: 0,
@@ -130,6 +164,11 @@ export function normalizeTimeTrackingState(
 
   const breakUsageCounts = normalizeBreakRecord(state.breakUsageCounts);
   const breakDurationsSeconds = normalizeBreakRecord(state.breakDurationsSeconds);
+  const sessionStartedAt =
+    state.sessionStartedAt ??
+    (state.status === "checked_in" || state.status === "on_break"
+      ? state.checkedInAt ?? state.lastUpdatedAt ?? nowIso
+      : null);
   const inferredHasCheckedIn =
     state.status === "checked_in" ||
     state.status === "on_break" ||
@@ -146,6 +185,7 @@ export function normalizeTimeTrackingState(
     isNormalizedBreakRecord(state.breakDurationsSeconds, breakDurationsSeconds) &&
     typeof state.hasCheckedIn === "boolean" &&
     state.hasCheckedIn === hasCheckedIn &&
+    state.sessionStartedAt === sessionStartedAt &&
     state.lastUpdatedAt !== null &&
     state.breakUsageCounts &&
     state.breakDurationsSeconds
@@ -155,6 +195,7 @@ export function normalizeTimeTrackingState(
 
   return {
     ...state,
+    sessionStartedAt,
     hasCheckedIn,
     breakUsageCounts,
     breakDurationsSeconds,
@@ -229,6 +270,7 @@ export function checkIn(
     ...normalized,
     status: "checked_in",
     checkedInAt: nowIso,
+    sessionStartedAt: nowIso,
     breakStartedAt: null,
     breakType: null,
     activeSessionSeconds: 0,
@@ -261,6 +303,7 @@ export function startBreak(
     ...normalized,
     status: "on_break",
     checkedInAt: null,
+    sessionStartedAt: normalized.sessionStartedAt ?? normalized.checkedInAt ?? nowIso,
     breakStartedAt: nowIso,
     breakType,
     activeSessionSeconds: getDisplayedSeconds(normalized, nowIso),
@@ -295,6 +338,7 @@ export function endBreak(
     ...normalized,
     status: "checked_in",
     checkedInAt: nowIso,
+    sessionStartedAt: normalized.sessionStartedAt ?? normalized.checkedInAt ?? nowIso,
     breakStartedAt: null,
     breakType: null,
     activeBreakSeconds: normalized.activeBreakSeconds + breakSeconds,
@@ -327,6 +371,7 @@ export function checkOut(
     ...normalized,
     status: "checked_out",
     checkedInAt: null,
+    sessionStartedAt: normalized.sessionStartedAt ?? normalized.checkedInAt ?? null,
     breakStartedAt: null,
     breakType: null,
     activeSessionSeconds: sessionSeconds,
@@ -335,4 +380,61 @@ export function checkOut(
     breakDurationsSeconds,
     lastUpdatedAt: nowIso,
   };
+}
+
+interface BuildAttendanceSnapshotInput {
+  employeeId: string;
+  timezone: string;
+  nowIso?: string;
+}
+
+export function buildEmployeeAttendanceSnapshot(
+  state: TimeTrackingState,
+  input: BuildAttendanceSnapshotInput,
+): EmployeeAttendanceSnapshot {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const normalized = normalizeTimeTrackingState(state, nowIso);
+  const sessionStartedAt =
+    normalized.sessionStartedAt ?? normalized.checkedInAt ?? normalized.lastUpdatedAt ?? nowIso;
+  const activityDate = getTimeZoneDateKey(sessionStartedAt, input.timezone);
+  const isOnBreak = normalized.status === "on_break";
+  const liveBreakSeconds = isOnBreak ? diffSeconds(normalized.breakStartedAt, nowIso) : 0;
+  const activeSessionSeconds =
+    normalized.status === "checked_in"
+      ? getDisplayedSeconds(normalized, nowIso)
+      : normalized.activeSessionSeconds;
+  const activeBreakSeconds =
+    normalized.status === "on_break"
+      ? normalized.activeBreakSeconds + liveBreakSeconds
+      : normalized.activeBreakSeconds;
+  const breakDurationsSeconds = { ...normalized.breakDurationsSeconds };
+
+  if (isOnBreak && normalized.breakType) {
+    breakDurationsSeconds[normalized.breakType] += liveBreakSeconds;
+  }
+
+  return {
+    employeeId: input.employeeId,
+    activityDate,
+    timezone: input.timezone,
+    status: normalized.status,
+    checkedInAt: sessionStartedAt,
+    checkedOutAt: normalized.status === "checked_out" ? normalized.lastUpdatedAt ?? nowIso : null,
+    breakStartedAt: isOnBreak ? normalized.breakStartedAt : null,
+    breakType: isOnBreak ? normalized.breakType : null,
+    activeSessionSeconds,
+    activeBreakSeconds,
+    hasCheckedIn: normalized.hasCheckedIn,
+    breakUsageCounts: normalized.breakUsageCounts,
+    breakDurationsSeconds,
+    lastUpdatedAt: normalized.lastUpdatedAt ?? nowIso,
+  };
+}
+
+export function formatEmployeeAttendanceWorkingHours(totalSeconds: number) {
+  return formatHoursMinutes(totalSeconds);
+}
+
+export function formatEmployeeAttendanceClock(value: string | null, timeZone: string) {
+  return formatClockTime(value, timeZone);
 }

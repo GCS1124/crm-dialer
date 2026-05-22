@@ -5,6 +5,7 @@ import {
   checkIn,
   checkOut,
   createInitialTimeTrackingState,
+  buildEmployeeAttendanceSnapshot,
   endBreak,
   getDisplayedSeconds,
   getBreakMenuOptions,
@@ -92,4 +93,28 @@ test("time tracking panel state shows live login time and active break summary",
   assert.equal(panel.activeBreakLabel, "Lunch Break");
   assert.equal(panel.activeBreakDurationLabel, "10:00");
   assert.equal(panel.activeBreakUsageLabel, "1/1 used");
+});
+
+test("buildEmployeeAttendanceSnapshot preserves the original shift start through break transitions", () => {
+  const checkedIn = checkIn(
+    createInitialTimeTrackingState("2026-05-22T13:57:00.000Z"),
+    "2026-05-22T13:57:00.000Z",
+  );
+  const onBreak = startBreak(checkedIn, "lunch", "2026-05-22T15:30:00.000Z");
+  const resumed = endBreak(onBreak, "2026-05-22T15:45:00.000Z");
+  const checkedOut = checkOut(resumed, "2026-05-22T18:19:00.000Z");
+
+  const snapshot = buildEmployeeAttendanceSnapshot(checkedOut as any, {
+    employeeId: "agent-1",
+    timezone: "Asia/Kolkata",
+    nowIso: "2026-05-22T18:19:00.000Z",
+  });
+
+  assert.equal(snapshot.activityDate, "2026-05-22");
+  assert.equal(snapshot.status, "checked_out");
+  assert.equal(snapshot.checkedInAt, "2026-05-22T13:57:00.000Z");
+  assert.equal(snapshot.checkedOutAt, "2026-05-22T18:19:00.000Z");
+  assert.equal(snapshot.activeSessionSeconds, 14820);
+  assert.equal(snapshot.activeBreakSeconds, 900);
+  assert.equal(snapshot.hasCheckedIn, true);
 });

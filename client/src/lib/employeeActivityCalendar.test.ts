@@ -147,7 +147,35 @@ test("builds a full monthly employee activity calendar with daily summaries", ()
     leads,
     employeeId: "agent-1",
     month: "2026-05",
-  });
+    attendanceDays: [
+      {
+        employeeId: "agent-1",
+        activityDate: "2026-05-22",
+        timezone: "Asia/Kolkata",
+        status: "checked_out",
+        checkedInAt: "2026-05-22T13:57:00.000Z",
+        checkedOutAt: "2026-05-22T18:04:00.000Z",
+        breakStartedAt: null,
+        breakType: null,
+        activeSessionSeconds: 14820,
+        activeBreakSeconds: 0,
+        hasCheckedIn: true,
+        breakUsageCounts: {
+          freshen_up: 0,
+          lunch: 0,
+          tea: 0,
+          meeting_training: 0,
+        },
+        breakDurationsSeconds: {
+          freshen_up: 0,
+          lunch: 0,
+          tea: 0,
+          meeting_training: 0,
+        },
+        lastUpdatedAt: "2026-05-22T18:04:00.000Z",
+      },
+    ],
+  } as any);
 
   assert.equal(result.employeeId, "agent-1");
   assert.equal(result.employeeName, "Asha Rao");
@@ -173,4 +201,12 @@ test("builds a full monthly employee activity calendar with daily summaries", ()
   assert.ok(may4);
   assert.equal(may4?.totalCalls, 0);
   assert.equal(may4?.records.length, 0);
+
+  const may22 = result.days.find((day) => day.date === "2026-05-22") as any;
+  assert.ok(may22);
+  assert.equal(may22.attendance.statusLabel, "Late");
+  assert.equal(may22.attendance.checkInLabel, "19:27");
+  assert.equal(may22.attendance.checkOutLabel, "23:34");
+  assert.equal(may22.attendance.workingHoursLabel, "4h 7m");
+  assert.equal(may22.attendance.breaksLabel, "0m • 0 breaks");
 });

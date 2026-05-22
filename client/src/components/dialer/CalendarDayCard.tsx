@@ -1,11 +1,30 @@
-import { cn } from "../../lib/utils";
+import { CalendarClock, CircleDot, Clock3, Star, XCircle } from "lucide-react";
+
 import type { EmployeeActivityCalendarDay } from "../../lib/employeeActivityCalendar.ts";
+import { cn } from "../../lib/utils";
 
 interface CalendarDayCardProps {
   day: EmployeeActivityCalendarDay;
   isToday: boolean;
   isSelected: boolean;
+  isDimmed: boolean;
   onClick: () => void;
+}
+
+function AttendanceIcon({ statusKey }: { statusKey: EmployeeActivityCalendarDay["attendance"]["statusKey"] }) {
+  if (statusKey === "late") {
+    return <Clock3 size={15} />;
+  }
+
+  if (statusKey === "absent") {
+    return <XCircle size={15} />;
+  }
+
+  if (statusKey === "on_break") {
+    return <CalendarClock size={15} />;
+  }
+
+  return <Star size={15} />;
 }
 
 function ActivityPill({
@@ -24,34 +43,47 @@ function ActivityPill({
         tone,
       )}
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      <CircleDot size={10} />
       {value} {label}
     </span>
   );
 }
 
-export function CalendarDayCard({ day, isToday, isSelected, onClick }: CalendarDayCardProps) {
+export function CalendarDayCard({
+  day,
+  isToday,
+  isSelected,
+  isDimmed,
+  onClick,
+}: CalendarDayCardProps) {
   const dayNumber = Number(day.date.slice(-2));
-  const hasActivity = day.totalCalls > 0;
-  const summaryLabel = hasActivity
-    ? `${day.totalCalls} total call${day.totalCalls === 1 ? "" : "s"}, ${day.interested} interested, ${day.notInterested} not interested, ${day.disposedCompleted} disposed or completed, ${day.failed} failed or not connected`
-    : "No activity";
+  const hasActivity = day.totalCalls > 0 || day.attendance.hasCheckedIn;
+  const attendance = day.attendance;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${day.date}: ${summaryLabel}`}
+      aria-label={`${day.date}: ${attendance.statusLabel}${hasActivity ? `, ${day.totalCalls} calls` : ""}`}
       aria-pressed={isSelected}
       className={cn(
-        "group flex min-h-[132px] flex-col rounded-[18px] border p-3 text-left transition-all",
-        hasActivity
-          ? "bg-white hover:-translate-y-0.5 hover:shadow-[0_10px_30px_rgba(15,23,42,0.08)] dark:bg-slate-950/90"
-          : "bg-slate-50/70 dark:bg-slate-900/40",
+        "group flex min-h-[140px] flex-col rounded-[20px] border p-3 text-left transition-all",
+        attendance.statusKey === "on_time"
+          ? "bg-emerald-50/80 hover:shadow-[0_12px_30px_rgba(16,185,129,0.12)] dark:bg-emerald-950/20"
+          : attendance.statusKey === "late"
+            ? "bg-orange-50/80 hover:shadow-[0_12px_30px_rgba(249,115,22,0.12)] dark:bg-orange-950/20"
+            : attendance.statusKey === "on_break"
+              ? "bg-amber-50/80 hover:shadow-[0_12px_30px_rgba(245,158,11,0.12)] dark:bg-amber-950/20"
+              : attendance.statusKey === "absent"
+                ? "bg-rose-50/80 hover:shadow-[0_12px_30px_rgba(244,63,94,0.12)] dark:bg-rose-950/20"
+                : attendance.statusKey === "weekend"
+                  ? "bg-slate-50/80 hover:shadow-[0_12px_30px_rgba(148,163,184,0.08)] dark:bg-slate-900/40"
+                  : "bg-slate-50/80 hover:shadow-[0_12px_30px_rgba(148,163,184,0.08)] dark:bg-slate-900/40",
+        isDimmed ? "opacity-55" : "opacity-100",
         isSelected
-          ? "border-sky-300 bg-sky-50 shadow-[0_12px_30px_rgba(14,165,233,0.12)] dark:border-sky-400/40 dark:bg-sky-950/20"
+          ? "border-sky-300 shadow-[0_14px_34px_rgba(14,165,233,0.16)] ring-2 ring-sky-200 dark:border-sky-400/40 dark:ring-sky-500/20"
           : "border-slate-200 dark:border-slate-800",
-        isToday ? "ring-2 ring-sky-200 ring-offset-1 ring-offset-transparent" : "",
+        isToday ? "ring-2 ring-offset-1 ring-offset-transparent ring-sky-200" : "",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -64,24 +96,27 @@ export function CalendarDayCard({ day, isToday, isSelected, onClick }: CalendarD
           </p>
         </div>
 
-        <div className="text-right">
-          <p
-            className={cn(
-              "text-[11px] font-medium",
-              hasActivity ? "text-slate-600 dark:text-slate-300" : "text-slate-400 dark:text-slate-500",
-            )}
-          >
-            {hasActivity ? `${day.totalCalls} call${day.totalCalls === 1 ? "" : "s"}` : "No activity"}
-          </p>
-          {day.averageDurationSeconds > 0 ? (
-            <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
-              Avg {day.averageDuration}
-            </p>
-          ) : null}
+        <div
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-full border",
+            attendance.statusTone,
+            "border-current/20",
+          )}
+        >
+          <AttendanceIcon statusKey={attendance.statusKey} />
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+          {attendance.statusLabel}
+        </p>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          {hasActivity ? `${day.totalCalls} call${day.totalCalls === 1 ? "" : "s"}` : "No activity"}
+        </p>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {day.interested ? (
           <ActivityPill label="Interested" tone="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" value={day.interested} />
         ) : null}
@@ -97,13 +132,13 @@ export function CalendarDayCard({ day, isToday, isSelected, onClick }: CalendarD
       </div>
 
       <div className="mt-auto pt-3">
-        {hasActivity ? (
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            {day.records.length} detailed record{day.records.length === 1 ? "" : "s"}
-          </p>
-        ) : (
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">No activity</p>
-        )}
+        <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+          <span>{attendance.workingHoursLabel}</span>
+          <span>Avg {day.averageDuration}</span>
+        </div>
+        <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+          {day.records.length} detailed record{day.records.length === 1 ? "" : "s"}
+        </p>
       </div>
     </button>
   );

@@ -75,6 +75,7 @@ export type TimeTrackingStatus = "checked_out" | "checked_in" | "on_break";
 export interface TimeTrackingState {
   status: TimeTrackingStatus;
   checkedInAt: string | null;
+  sessionStartedAt: string | null;
   breakStartedAt: string | null;
   breakType: BreakType | null;
   activeSessionSeconds: number;
@@ -83,6 +84,23 @@ export interface TimeTrackingState {
   breakUsageCounts: Record<BreakType, number>;
   breakDurationsSeconds: Record<BreakType, number>;
   lastUpdatedAt: string | null;
+}
+
+export interface EmployeeAttendanceSnapshot {
+  employeeId: string;
+  activityDate: string;
+  timezone: string;
+  status: TimeTrackingStatus;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  breakStartedAt: string | null;
+  breakType: BreakType | null;
+  activeSessionSeconds: number;
+  activeBreakSeconds: number;
+  hasCheckedIn: boolean;
+  breakUsageCounts: Record<BreakType, number>;
+  breakDurationsSeconds: Record<BreakType, number>;
+  lastUpdatedAt: string;
 }
 
 export interface User {

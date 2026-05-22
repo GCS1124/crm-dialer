@@ -33,6 +33,7 @@ import {
   uploadLeads,
 } from "../services/workspace";
 import { buildEmployeeActivityCalendar } from "./employeeActivityCalendar.ts";
+import { loadEmployeeAttendanceDays } from "../services/attendance";
 import type {
   CallLogFormInput,
   CreateSipProfileInput,
@@ -229,11 +230,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
         throw new ApiError("Employee not found.", { status: 404 });
       }
 
+      const attendanceDays = await loadEmployeeAttendanceDays(employeeId, month, options.token ?? null);
+
       return (buildEmployeeActivityCalendar({
         users: workspace.users,
         leads: workspace.leads,
         employeeId,
         month,
+        attendanceDays,
       }) as T);
     }
 
